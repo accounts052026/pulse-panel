@@ -3,6 +3,7 @@ import { useState } from "react"
 import VirtualGrid, { VGColumn } from "./VirtualGrid"
 import MasterInput from "./MasterInput"
 import SheetImport from "./SheetImport"
+import FileUpload from "./FileUpload"
 import { detectPlatform } from "@/lib/platforms"
 import type { Transaction, TxType } from "@/lib/supabase"
 
@@ -58,7 +59,7 @@ interface Props {
   saving: boolean
 }
 
-type ActiveTab = TxType | "master" | "sheets"
+type ActiveTab = TxType | "master" | "sheets" | "upload"
 
 export default function TransactionTabs({ onSave, saving }: Props) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("master")
@@ -99,6 +100,17 @@ export default function TransactionTabs({ onSave, saving }: Props) {
         }`}
       >
         ⚡ Master Paste
+      </button>
+      {/* Upload File */}
+      <button
+        onClick={() => setActiveTab("upload")}
+        className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          activeTab === "upload"
+            ? "border-blue-600 text-blue-700 bg-blue-50"
+            : "border-transparent text-slate-500 hover:text-blue-600"
+        }`}
+      >
+        📂 Upload File
       </button>
       {/* Google Sheets */}
       <button
@@ -141,6 +153,8 @@ export default function TransactionTabs({ onSave, saving }: Props) {
       <div className="p-4">
         {activeTab === "master" ? (
           <MasterInput onSave={onSave} saving={saving} />
+        ) : activeTab === "upload" ? (
+          <FileUpload onSave={onSave} saving={saving} />
         ) : activeTab === "sheets" ? (
           <SheetImport onSave={onSave} saving={saving} />
         ) : (

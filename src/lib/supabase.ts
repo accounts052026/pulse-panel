@@ -13,12 +13,22 @@ export interface Transaction {
   type: TxType
   date: string
   document_no?: string
+  invoice_no?: string
+  due_date?: string
   platform: string
   entity?: string
   description?: string
+  item_name?: string
+  hsn_sac?: string
+  qty?: number
+  rate?: number
+  discount?: number
   debit: number
   credit: number
   amount: number
+  igst?: number
+  cgst?: number
+  sgst?: number
   tds?: number
   status?: string
   created_at?: string
