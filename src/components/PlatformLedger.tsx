@@ -7,7 +7,7 @@ import type { Transaction } from "@/lib/supabase"
 interface Props { transactions: Transaction[] }
 
 export default function PlatformLedger({ transactions }: Props) {
-  const [platform, setPlatform] = useState(PLATFORMS[0])
+  const [platform, setPlatform] = useState<Platform>(PLATFORMS[0])
 
   const ar = transactions.filter((t) => t.platform === platform && (AR_TYPES as readonly string[]).includes(t.type))
   const ap = transactions.filter((t) => t.platform === platform && (AP_TYPES as readonly string[]).includes(t.type))
