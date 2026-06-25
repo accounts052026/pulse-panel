@@ -35,14 +35,19 @@ export default function Home() {
   useEffect(() => { load() }, [load])
 
   const handleSave = async (txs: Transaction[]) => {
-    setSaving(true)
+    setSaving(true); setErr("")
     try {
-      const res = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(txs),
-      })
-      if (!res.ok) throw new Error(await res.text())
+      // Batch into chunks of 200 to stay under Vercel's 4.5MB body limit
+      const CHUNK = 200
+      for (let i = 0; i < txs.length; i += CHUNK) {
+        const chunk = txs.slice(i, i + CHUNK)
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(chunk),
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }
       await load()
     } catch (e: any) { setErr(e.message) }
     finally { setSaving(false) }

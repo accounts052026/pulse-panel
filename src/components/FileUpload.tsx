@@ -98,34 +98,50 @@ export default function FileUpload({ onSave, saving }: Props) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let workbook: any
 
+      // ── Parse one workbook into {headers, dataRows} ──────────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parseWorkbook = (wb: any) => {
+        const wsName = wb.SheetNames[0]
+        const ws     = wb.Sheets[wsName]
+        const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:"", raw:false }) as string[][]
+        let hi = 0
+        for (let i = 0; i < Math.min(15, raw.length); i++) {
+          if (raw[i].filter(c => c?.toString().trim()).length >= 4) { hi = i; break }
+        }
+        const headers  = raw[hi].map(h => h?.toString().trim() ?? "")
+        const dataRows = raw.slice(hi+1).filter(r => r.some(c => c?.toString().trim()))
+        return { headers, dataRows, sheetName: wsName }
+      }
+
+      // Collect all {headers, dataRows} across files
+      let allParsed: { headers: string[]; dataRows: string[][]; sheetName: string }[] = []
+
       if (file.name.toLowerCase().endsWith(".zip")) {
         const JSZip   = (await import("jszip")).default
         const zip     = await JSZip.loadAsync(file)
-        const xlsFile = Object.keys(zip.files).find(f => /\.(xlsx|xls)$/i.test(f))
-        if (!xlsFile) { setErr("No Excel file found inside the ZIP."); setParsing(false); return }
-        const buf = await zip.files[xlsFile].async("arraybuffer")
-        workbook  = XLSX.read(buf, { type: "array", cellDates: true, raw: false })
+        const xlsFiles = Object.keys(zip.files).filter(f => /\.(xlsx|xls)$/i.test(f) && !zip.files[f].dir)
+        if (!xlsFiles.length) { setErr("No Excel files found inside the ZIP."); setParsing(false); return }
+        for (const xlsFile of xlsFiles) {
+          const buf = await zip.files[xlsFile].async("arraybuffer")
+          const wb  = XLSX.read(buf, { type:"array", cellDates:true, raw:false })
+          allParsed.push(parseWorkbook(wb))
+        }
       } else if (/\.csv$/i.test(file.name)) {
-        const text    = await file.text()
-        workbook      = XLSX.read(text, { type: "string" })
+        const text = await file.text()
+        const wb   = XLSX.read(text, { type:"string" })
+        allParsed.push(parseWorkbook(wb))
       } else {
-        const buf  = await file.arrayBuffer()
-        workbook   = XLSX.read(buf, { type: "array", cellDates: true, raw: false })
+        const buf = await file.arrayBuffer()
+        const wb  = XLSX.read(buf, { type:"array", cellDates:true, raw:false })
+        allParsed.push(parseWorkbook(wb))
       }
 
-      const sheetName = workbook.SheetNames[0]
-      const ws        = workbook.Sheets[sheetName]
-      // Get as 2D array with formatted strings
-      const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:"", raw:false }) as string[][]
-
-      // Find header row (first row with ≥4 non-empty cells)
-      let headerIdx = 0
-      for (let i = 0; i < Math.min(15, raw.length); i++) {
-        if (raw[i].filter(c => c?.toString().trim()).length >= 4) { headerIdx = i; break }
-      }
-
-      const headers  = raw[headerIdx].map(h => h?.toString().trim() ?? "")
-      const dataRows = raw.slice(headerIdx + 1).filter(r => r.some(c => c?.toString().trim()))
+      // Use headers from first file; merge all dataRows
+      const headers  = allParsed[0].headers
+      const dataRows = allParsed.flatMap(p => p.dataRows)
+      const sheetName = allParsed.length > 1
+        ? `${allParsed.length} files merged`
+        : allParsed[0].sheetName
 
       // Build column map
       const cm = Object.fromEntries(
@@ -193,9 +209,9 @@ export default function FileUpload({ onSave, saving }: Props) {
         txs,
         platformCounts: Object.entries(counts).map(([platform,count])=>({platform,count})),
         totalAmount,
-        sheetName,
+        sheetName: sheetName ?? allParsed[0]?.sheetName ?? file.name,
       })
-      setMsg(`✓ ${txs.length} line items parsed from "${sheetName}"`)
+      setMsg(`✓ ${txs.length} line items parsed from ${allParsed.length > 1 ? `${allParsed.length} files` : `"${allParsed[0].sheetName}"`}`)
     } catch(e: unknown) {
       setErr("Parse error: " + (e instanceof Error ? e.message : String(e)))
     } finally {
