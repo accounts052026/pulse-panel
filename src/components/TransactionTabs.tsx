@@ -2,6 +2,7 @@
 import { useState } from "react"
 import VirtualGrid, { VGColumn } from "./VirtualGrid"
 import MasterInput from "./MasterInput"
+import SheetImport from "./SheetImport"
 import { detectPlatform } from "@/lib/platforms"
 import type { Transaction, TxType } from "@/lib/supabase"
 
@@ -57,14 +58,19 @@ interface Props {
   saving: boolean
 }
 
-type ActiveTab = TxType | "master"
+type ActiveTab = TxType | "master" | "sheets"
 
 export default function TransactionTabs({ onSave, saving }: Props) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("master")
   // Store each tab's grid as 2D string array — no fixed column count
-  const [grids, setGrids] = useState<Record<TxType, string[][]>>(
-    () => Object.fromEntries(TAB_CONFIG.map(t => [t.key, []])) as Record<TxType, string[][]>
-  )
+  const [grids, setGrids] = useState<Record<TxType, string[][]>>({
+    sales_invoice:    [],
+    credit_note:      [],
+    payment_received: [],
+    bill_received:    [],
+    vendor_credit:    [],
+    payment_made:     [],
+  })
   const [msg, setMsg] = useState("")
 
   const tab = TAB_CONFIG.find(t => t.key === activeTab)
@@ -93,6 +99,17 @@ export default function TransactionTabs({ onSave, saving }: Props) {
         }`}
       >
         ⚡ Master Paste
+      </button>
+      {/* Google Sheets */}
+      <button
+        onClick={() => setActiveTab("sheets")}
+        className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          activeTab === "sheets"
+            ? "border-green-600 text-green-700 bg-green-50"
+            : "border-transparent text-slate-500 hover:text-green-600"
+        }`}
+      >
+        📊 Google Sheets
       </button>
       <div className="w-px bg-slate-200 my-2 mx-1" />
       {TAB_CONFIG.map(t => (
@@ -124,6 +141,8 @@ export default function TransactionTabs({ onSave, saving }: Props) {
       <div className="p-4">
         {activeTab === "master" ? (
           <MasterInput onSave={onSave} saving={saving} />
+        ) : activeTab === "sheets" ? (
+          <SheetImport onSave={onSave} saving={saving} />
         ) : (
           <>
             <div className="flex items-center justify-between mb-3">
