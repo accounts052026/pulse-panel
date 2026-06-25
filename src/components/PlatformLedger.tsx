@@ -1,6 +1,6 @@
 "use client"
 import { useState } from "react"
-import { PLATFORMS, AR_TYPES, AP_TYPES } from "@/lib/platforms"
+import { PLATFORMS, AR_TYPES, AP_TYPES, type Platform } from "@/lib/platforms"
 import { fmt } from "@/lib/calculations"
 import type { Transaction } from "@/lib/supabase"
 
