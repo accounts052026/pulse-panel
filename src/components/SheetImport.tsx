@@ -65,7 +65,7 @@ interface PreviewState {
 }
 
 export default function SheetImport({ onSave, saving }: Props) {
-  const [sheetUrl, setSheetUrl] = useState("")
+  const [sheetUrl, setSheetUrl] = useState("https://docs.google.com/spreadsheets/d/1eAbBY9HXX-PAk3b-J2B6ExGy1ft37EZiWeIVNw9gpOU/edit")
   const [txType,   setTxType]   = useState<TxType>("sales_invoice")
   const [loading,  setLoading]  = useState(false)
   const [preview,  setPreview]  = useState<PreviewState | null>(null)
