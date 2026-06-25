@@ -1,6 +1,7 @@
 "use client"
 import { useState, useCallback, useRef } from "react"
-import { detectPlatform } from "@/lib/platforms"
+import { detectPlatform, } from "@/lib/platforms"
+import { getSupabase } from "@/lib/supabase"
 import type { Transaction, TxType } from "@/lib/supabase"
 
 // ── Zoho item-level column matchers ──────────────────────────
@@ -78,10 +79,11 @@ interface Props {
   saving: boolean
 }
 
-export default function FileUpload({ onSave, saving }: Props) {
+export default function FileUpload({ onSave }: Props) {
   const [txType,   setTxType]   = useState<TxType>("sales_invoice")
   const [dragging, setDragging] = useState(false)
   const [parsing,  setParsing]  = useState(false)
+  const [saving,   setSaving]   = useState(false)
   const [result,   setResult]   = useState<ParseResult | null>(null)
   const [fileName, setFileName] = useState("")
   const [msg,      setMsg]      = useState("")
@@ -234,13 +236,36 @@ export default function FileUpload({ onSave, saving }: Props) {
 
   const handleSave = async () => {
     if (!result?.txs.length) return
-    // Delete old records for this type, insert new
-    await fetch(`/api/transactions?type=${txType}`, { method: "DELETE" })
-    await onSave(result.txs)
-    const label = TX_TYPES.find(t=>t.key===txType)?.label
-    setMsg(`✓ ${result.txs.length} rows saved. Previous ${label} data cleared and replaced.`)
-    setResult(null); setFileName("")
-    setTimeout(()=>setMsg(""), 5000)
+    setSaving(true)
+    try {
+      const db    = getSupabase()
+      const label = TX_TYPES.find(t=>t.key===txType)?.label
+
+      // 1. Delete existing records for this type — direct to Supabase, no size limit
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: delErr } = await (db.from("pp_transactions") as any).delete().eq("type", txType)
+      if (delErr) throw new Error(delErr.message)
+
+      // 2. Insert in chunks of 500 — direct browser→Supabase, bypasses Vercel 4.5MB cap
+      const CHUNK = 500
+      const txs   = result.txs
+      for (let i = 0; i < txs.length; i += CHUNK) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (db.from("pp_transactions") as any).insert(txs.slice(i, i + CHUNK))
+        if (error) throw new Error(error.message)
+        setMsg(`Saving… ${Math.min(i + CHUNK, txs.length)} / ${txs.length}`)
+      }
+
+      setMsg(`✓ ${txs.length} rows saved. Previous ${label} data cleared and replaced.`)
+      setResult(null); setFileName("")
+      // Refresh parent
+      onSave([])
+      setTimeout(() => setMsg(""), 5000)
+    } catch(e: unknown) {
+      setErr("Save failed: " + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const reset = () => {
