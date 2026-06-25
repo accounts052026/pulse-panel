@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await db
     .from("pp_transactions")
-    .upsert(rows, { onConflict: "id" })
+    .upsert(rows as any[], { onConflict: "id" })
     .select()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
