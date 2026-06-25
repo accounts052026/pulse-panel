@@ -1,22 +1,16 @@
 "use client"
 import { useState, useEffect, useCallback } from "react"
+import Sidebar from "@/components/Sidebar"
 import TransactionTabs from "@/components/TransactionTabs"
 import InsightBoard from "@/components/InsightBoard"
 import PlatformLedger from "@/components/PlatformLedger"
 import MonthlyView from "@/components/MonthlyView"
 import type { Transaction } from "@/lib/supabase"
-
-type View = "enter" | "insight" | "ledger" | "monthly"
-
-const VIEWS: { key: View; label: string; icon: string }[] = [
-  { key: "enter",   label: "Enter Data",      icon: "📥" },
-  { key: "insight", label: "InsightBoard",    icon: "📊" },
-  { key: "ledger",  label: "Platform Ledger", icon: "📚" },
-  { key: "monthly", label: "Month-wise",      icon: "📅" },
-]
+import type { View } from "@/components/types"
 
 export default function Home() {
-  const [view, setView]                 = useState<View>("enter")
+  const [view, setView]                 = useState<View>("insight")
+  const [platform, setPlatform]         = useState("All")
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [saving, setSaving]             = useState(false)
   const [loading, setLoading]           = useState(false)
@@ -25,21 +19,18 @@ export default function Home() {
   const [err, setErr]                   = useState("")
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setErr("")
+    setLoading(true); setErr("")
     try {
       const params = new URLSearchParams()
       if (dateFrom) params.set("from", dateFrom)
       if (dateTo)   params.set("to",   dateTo)
+      if (platform && platform !== "All") params.set("platform", platform)
       const res = await fetch(`/api/transactions?${params}`)
       if (!res.ok) throw new Error(await res.text())
       setTransactions(await res.json())
-    } catch (e: any) {
-      setErr(e.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [dateFrom, dateTo])
+    } catch (e: any) { setErr(e.message) }
+    finally { setLoading(false) }
+  }, [dateFrom, dateTo, platform])
 
   useEffect(() => { load() }, [load])
 
@@ -53,75 +44,99 @@ export default function Home() {
       })
       if (!res.ok) throw new Error(await res.text())
       await load()
-    } catch (e: any) {
-      setErr(e.message)
-    } finally {
-      setSaving(false)
-    }
+    } catch (e: any) { setErr(e.message) }
+    finally { setSaving(false) }
   }
 
-  const arTotal = transactions
-    .filter((t) => t.type === "sales_invoice")
-    .reduce((s, t) => s + t.amount, 0)
+  // Stats
+  const totalAR  = transactions.filter(t => t.type === "sales_invoice").reduce((s, t) => s + t.amount, 0)
+  const received = transactions.filter(t => t.type === "payment_received").reduce((s, t) => s + t.amount, 0)
+  const returns  = transactions.filter(t => t.type === "credit_note").reduce((s, t) => s + t.amount, 0)
+  const outstanding = totalAR - returns - received
 
-  const netCash = arTotal
-    - transactions.filter((t) => ["credit_note","payment_received"].includes(t.type)).reduce((s, t) => s + t.amount, 0)
+  const fmt = (n: number) => new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(n)
+
+  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).toUpperCase()
+
+  const VIEW_TITLES: Record<View, string> = {
+    insight: "INSIGHTBOARD",
+    monthly: "MONTH-WISE",
+    enter:   "ENTER DATA",
+    ledger:  "PLATFORM LEDGER",
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <span className="text-xl font-bold text-indigo-700">⚡ Pulse Panel</span>
-          <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Live AR/AP Tracker</span>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">From</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-              className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            <span className="text-slate-500">To</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-              className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            <button onClick={load} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-sm font-medium">
-              {loading ? "…" : "Filter"}
-            </button>
-          </div>
-          <div className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-mono font-semibold">
-            AR Outstanding ≈ ₹{new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(netCash)}
-          </div>
-        </div>
-      </header>
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      <Sidebar view={view} setView={setView} platform={platform} setPlatform={setPlatform} />
 
-      {/* Nav */}
-      <nav className="bg-white border-b border-slate-200 px-6">
-        <div className="flex gap-1 items-center">
-          {VIEWS.map((v) => (
-            <button
-              key={v.key}
-              onClick={() => setView(v.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                view === v.key ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {v.icon} {v.label}
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-3 py-2">
-            {err && <span className="text-xs text-rose-600">{err}</span>}
-            <span className="text-xs text-slate-400">{transactions.length} transactions</span>
-            <button onClick={load} className="text-xs text-indigo-500 hover:text-indigo-700">↻ Refresh</button>
-          </div>
-        </div>
-      </nav>
+      {/* Main */}
+      <div className="flex-1 flex flex-col overflow-hidden">
 
-      {/* Content */}
-      <main className="px-6 py-6 space-y-6 max-w-screen-2xl mx-auto">
-        {view === "enter"   && <TransactionTabs onSave={handleSave} saving={saving} />}
-        {view === "insight" && <InsightBoard    transactions={transactions} />}
-        {view === "ledger"  && <PlatformLedger  transactions={transactions} />}
-        {view === "monthly" && <MonthlyView     transactions={transactions} />}
-      </main>
+        {/* Top bar — dark */}
+        <header className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between shrink-0">
+          <div>
+            <div className="text-[10px] tracking-widest text-slate-400 uppercase">{today}</div>
+            <div className="text-lg font-bold tracking-wide mt-0.5">
+              {VIEW_TITLES[view]}{" "}
+              {platform !== "All" && (
+                <span className="text-violet-400 font-bold">{platform.toUpperCase()}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide">Total Invoice</div>
+              <div className="text-xl font-bold text-white">₹{fmt(totalAR)}</div>
+            </div>
+            <div className="w-px h-8 bg-slate-700" />
+            <div className="text-center">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide">Received</div>
+              <div className="text-xl font-bold text-emerald-400">₹{fmt(received)}</div>
+            </div>
+            <div className="w-px h-8 bg-slate-700" />
+            <div className="text-center">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide">Outstanding</div>
+              <div className={`text-xl font-bold ${outstanding < 0 ? "text-rose-400" : "text-amber-400"}`}>
+                ₹{fmt(outstanding)}
+              </div>
+            </div>
+            <div className="w-px h-8 bg-slate-700" />
+            {/* Date filter */}
+            <div className="flex items-center gap-2 text-xs">
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white rounded px-2 py-1 text-xs" />
+              <span className="text-slate-500">–</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white rounded px-2 py-1 text-xs" />
+              <button onClick={load}
+                className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1 rounded text-xs font-medium">
+                {loading ? "…" : "Filter"}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Error bar */}
+        {err && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2 text-sm text-rose-600">{err}</div>
+        )}
+
+        {/* Content */}
+        <main className="flex-1 overflow-auto p-6">
+          {view === "enter"   && <TransactionTabs onSave={handleSave} saving={saving} />}
+          {view === "insight" && <InsightBoard    transactions={transactions} />}
+          {view === "ledger"  && <PlatformLedger  transactions={transactions} />}
+          {view === "monthly" && <MonthlyView     transactions={transactions} />}
+        </main>
+
+        {/* Footer */}
+        <div className="bg-white border-t border-slate-200 px-6 py-2 flex items-center justify-between text-xs text-slate-400 shrink-0">
+          <span>{transactions.length} transactions loaded</span>
+          <button onClick={load} className="hover:text-violet-600 font-medium">↻ Refresh</button>
+        </div>
+      </div>
     </div>
   )
 }
