@@ -33,6 +33,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  // Bulk delete by transaction type (for sheet re-import)
+  const typeParam = req.nextUrl.searchParams.get("type")
+  if (typeParam) {
+    const { error } = await tbl().delete().eq("type", typeParam)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+  // Delete by IDs
   const { ids } = await req.json()
   const { error } = await tbl().delete().in("id", ids)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
