@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import Grid, { ColDef } from "./Grid"
+import MasterInput from "./MasterInput"
 import { PLATFORMS, detectPlatform } from "@/lib/platforms"
 import type { Transaction, TxType } from "@/lib/supabase"
 
@@ -32,13 +33,38 @@ interface Props {
 }
 
 export default function TransactionTabs({ onSave, saving }: Props) {
-  const [activeTab, setActiveTab] = useState<TxType>("sales_invoice")
+  const [activeTab, setActiveTab] = useState<TxType>("master" as TxType)
   const [data, setData] = useState<Record<TxType, Record<string, string>[]>>(
     () => Object.fromEntries(TAB_CONFIG.map((t) => [t.key, []])) as any
   )
   const [msg, setMsg] = useState("")
 
-  const tab = TAB_CONFIG.find((t) => t.key === activeTab)!
+  const tab = TAB_CONFIG.find((t) => t.key === activeTab)
+
+  // Master tab — render MasterInput
+  if (activeTab === ("master" as TxType)) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div className="flex overflow-x-auto border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab("master" as TxType)}
+            className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-violet-600 text-violet-700 bg-violet-50"
+          >
+            ⚡ Master Paste
+          </button>
+          {TAB_CONFIG.map((t) => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="p-4">
+          <MasterInput onSave={onSave} saving={saving} />
+        </div>
+      </div>
+    )
+  }
 
   const handleSave = async () => {
     const allRows: Transaction[] = []
@@ -71,6 +97,14 @@ export default function TransactionTabs({ onSave, saving }: Props) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200">
       <div className="flex overflow-x-auto border-b border-slate-200">
+        {/* Master tab */}
+        <button
+          onClick={() => setActiveTab("master" as TxType)}
+          className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-slate-500 hover:text-violet-700"
+        >
+          ⚡ Master
+        </button>
+        <div className="w-px bg-slate-200 my-2" />
         {TAB_CONFIG.map((t) => (
           <button
             key={t.key}
