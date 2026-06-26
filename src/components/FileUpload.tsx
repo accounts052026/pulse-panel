@@ -4,31 +4,62 @@ import { detectPlatform, } from "@/lib/platforms"
 import { getSupabase } from "@/lib/supabase"
 import type { Transaction, TxType } from "@/lib/supabase"
 
-// ── Zoho item-level column matchers ──────────────────────────
-// Each entry: field name → list of possible header substrings (lowercase)
+// ── Zoho column matchers — covers every common Zoho Books export column ──────
 const MATCHERS: Record<string, string[]> = {
-  // Header-level
-  entity:       ["customer name","vendor name","supplier name","party name","bill to","customer","vendor","entity","client","contact"],
-  date:         ["invoice date","bill date","date","created time","created date","txn date"],
-  document_no:  ["invoice#","invoice #","invoice number","invoice no","bill#","bill no","bill number","doc no","voucher no","reference#"],
-  invoice_no:   ["invoice#","invoice #","invoice number","invoice no"],
-  due_date:     ["due date","payment due","due by"],
-  status:       ["invoice status","payment status","status","state"],
-  // Item-level
-  item_name:    ["item name","product name","service name","item description","item","product","service","description","particulars"],
-  hsn_sac:      ["hsn/sac","hsn code","sac code","hsn","sac"],
-  qty:          ["quantity","qty","units","no. of units"],
-  rate:         ["rate","unit price","selling price","price","rate/item"],
-  discount:     ["item discount","discount amount","discount"],
-  // Tax
-  igst:         ["igst amount","igst","integrated tax","integrated gst"],
-  cgst:         ["cgst amount","cgst","central tax","central gst"],
-  sgst:         ["sgst amount","sgst","utgst amount","utgst","state tax","state gst"],
-  tds:          ["tds","tax deducted","withholding tax","tcs"],
-  // Amounts
-  amount:       ["item total","item amount","line total","total","sub total","amount","net amount","value","taxable amount"],
-  debit:        ["debit","dr"],
-  credit:       ["credit","cr"],
+  // Party / header
+  entity:           ["customer name","vendor name","supplier name","party name","bill to","customer","vendor","entity","client","contact name"],
+  date:             ["invoice date","bill date","date","created time","created date","txn date","transaction date"],
+  document_no:      ["invoice#","invoice #","invoice number","invoice no","bill#","bill no","bill number","doc no","voucher no","reference#","ref no"],
+  invoice_no:       ["invoice#","invoice #","invoice number","invoice no"],
+  order_number:     ["order number","po number","purchase order","order#","sales order"],
+  subject:          ["subject","invoice subject","description of supply"],
+  due_date:         ["due date","payment due","due by","due on"],
+  payment_date:     ["payment date","paid date","date of payment"],
+  payment_terms:    ["payment terms","terms","net days"],
+  status:           ["invoice status","payment status","status","state"],
+  // GST / compliance
+  gstin:            ["gstin","gst identification","gst number","vendor gstin","customer gstin"],
+  gst_treatment:    ["gst treatment","tax treatment"],
+  place_of_supply:  ["place of supply","supply state","destination state"],
+  reverse_charge:   ["reverse charge","rcm"],
+  // Address & parties
+  billing_address:  ["billing address","bill to address","invoice address"],
+  shipping_address: ["shipping address","ship to","delivery address"],
+  sales_person:     ["sales person","salesperson","sales rep","handled by"],
+  branch:           ["branch","location","warehouse"],
+  account:          ["account","ledger account","account name"],
+  currency:         ["currency","currency code"],
+  exchange_rate:    ["exchange rate","forex rate"],
+  // Line item
+  item_name:        ["item name","product name","service name","item","product","service"],
+  item_description: ["item description","product description","description"],
+  item_sku:         ["sku","item sku","product code","item code"],
+  item_unit:        ["unit","uom","unit of measure"],
+  hsn_sac:          ["hsn/sac","hsn code","sac code","hsn","sac"],
+  qty:              ["quantity","qty","units","no. of units","quantity ordered"],
+  rate:             ["rate","unit price","selling price","price","rate/item","unit rate"],
+  discount:         ["item discount","discount amount","discount %","discount"],
+  // Tax per line
+  item_tax_name:    ["item tax name","tax name","gst name","tax type"],
+  item_tax_pct:     ["item tax %","tax %","tax rate","gst %","igst %","cgst %","sgst %"],
+  item_tax_amount:  ["item tax amount","tax amount","line tax"],
+  // Totals
+  sub_total:        ["sub total","subtotal","taxable amount","taxable value"],
+  total_tax:        ["total tax","tax total","total gst"],
+  adjustment:       ["adjustment","rounding","round off"],
+  total:            ["total","invoice total","grand total","bill total","net total"],
+  balance_due:      ["balance due","amount due","outstanding","balance"],
+  igst:             ["igst amount","igst","integrated tax"],
+  cgst:             ["cgst amount","cgst","central tax"],
+  sgst:             ["sgst amount","sgst","utgst amount","utgst","state tax"],
+  cess:             ["cess amount","cess","additional tax"],
+  tds:              ["tds","tax deducted","withholding tax","tcs"],
+  amount:           ["item total","item amount","line total","amount","net amount","value"],
+  debit:            ["debit","dr","dr amount"],
+  credit:           ["credit","cr","cr amount"],
+  // Notes
+  notes:            ["notes","customer notes","remarks","narration","memo"],
+  terms:            ["terms","terms & conditions","terms and conditions"],
 }
 
 const TX_TYPES: { key: TxType; label: string; icon: string; ar: boolean }[] = [
@@ -78,6 +109,9 @@ interface Props {
   onSave: (txs: Transaction[]) => Promise<void>
   saving: boolean
 }
+
+const FREEZE_DATE = "2026-03-31"   // FY 2025-26 cutoff
+const LIVE_FROM   = "1 Apr 2026"   // display label
 
 export default function FileUpload({ onSave }: Props) {
   const [txType,   setTxType]   = useState<TxType>("sales_invoice")
@@ -150,7 +184,7 @@ export default function FileUpload({ onSave }: Props) {
         Object.entries(MATCHERS).map(([f,keys]) => [f, detectCol(headers, keys)])
       )
 
-      // Parse each row as a line item
+      // Parse each row as a line item — store ALL columns in raw_data
       const txs: Transaction[] = dataRows
         .map(row => {
           const g  = (f: string): string => cm[f]>=0 ? (row[cm[f]]?.toString().trim() ?? "") : ""
@@ -172,28 +206,64 @@ export default function FileUpload({ onSave }: Props) {
           if (!amount && qty && rate) amount = qty * rate - discount
           if (!amount) amount = Math.abs(debit - credit) || debit || credit
 
+          // Store EVERY original column — nothing lost for future reporting
+          const raw_data: Record<string, string> = {}
+          headers.forEach((h, i) => {
+            if (h) raw_data[h] = row[i]?.toString() ?? ""
+          })
+
           return {
-            type:        txType,
-            date:        normDate(g("date")) || new Date().toISOString().slice(0,10),
-            document_no: g("document_no") || g("invoice_no"),
-            invoice_no:  g("invoice_no") || g("document_no"),
-            due_date:    normDate(g("due_date")) || undefined,
-            platform:    detectPlatform(entity) || "Other",
+            type:             txType,
+            date:             normDate(g("date")) || new Date().toISOString().slice(0,10),
+            due_date:         normDate(g("due_date")) || undefined,
+            payment_date:     normDate(g("payment_date")) || undefined,
+            document_no:      g("document_no") || g("invoice_no"),
+            invoice_no:       g("invoice_no") || g("document_no"),
+            order_number:     g("order_number"),
+            subject:          g("subject"),
+            status:           g("status") || "Open",
+            payment_terms:    g("payment_terms"),
+            platform:         detectPlatform(entity) || "Other",
             entity,
-            item_name:   g("item_name"),
-            description: g("item_name") || g("entity"),   // fallback
-            hsn_sac:     g("hsn_sac"),
+            gstin:            g("gstin"),
+            gst_treatment:    g("gst_treatment"),
+            place_of_supply:  g("place_of_supply"),
+            reverse_charge:   g("reverse_charge"),
+            billing_address:  g("billing_address"),
+            shipping_address: g("shipping_address"),
+            sales_person:     g("sales_person"),
+            branch:           g("branch"),
+            account:          g("account"),
+            currency:         g("currency") || "INR",
+            exchange_rate:    parseNum(g("exchange_rate")) || 1,
+            item_name:        g("item_name"),
+            item_description: g("item_description"),
+            item_sku:         g("item_sku"),
+            item_unit:        g("item_unit"),
+            description:      g("item_description") || g("item_name"),
+            hsn_sac:          g("hsn_sac"),
             qty,
             rate,
             discount,
+            sub_total:        parseNum(g("sub_total")),
+            total_tax:        parseNum(g("total_tax")),
+            adjustment:       parseNum(g("adjustment")),
+            total:            parseNum(g("total")),
+            balance_due:      parseNum(g("balance_due")),
             debit,
             credit,
             amount,
             igst,
             cgst,
             sgst,
+            cess:             parseNum(g("cess")),
             tds,
-            status:      g("status") || "Open",
+            item_tax_name:    g("item_tax_name"),
+            item_tax_pct:     parseNum(g("item_tax_pct")),
+            item_tax_amount:  parseNum(g("item_tax_amount")),
+            notes:            g("notes"),
+            terms:            g("terms"),
+            raw_data,         // ← every original column preserved regardless
           } as Transaction
         })
         .filter(t => t.entity || t.document_no || t.amount || t.item_name)
@@ -240,27 +310,34 @@ export default function FileUpload({ onSave }: Props) {
     try {
       const db    = getSupabase()
       const label = TX_TYPES.find(t=>t.key===txType)?.label
+      const txs   = result.txs
 
-      // 1. Delete existing records for this type — direct to Supabase, no size limit
+      // Split: frozen (historical) vs live
+      const live       = txs.filter(t => t.date > FREEZE_DATE)
+      const frozen     = txs.filter(t => t.date <= FREEZE_DATE)
+      const frozenRows = frozen.length
+
+      // 1. Delete only live records for this type (frozen rows untouched)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: delErr } = await (db.from("pp_transactions") as any).delete().eq("type", txType)
+      const { error: delErr } = await (db.from("pp_transactions") as any)
+        .delete().eq("type", txType).gt("date", FREEZE_DATE)
       if (delErr) throw new Error(delErr.message)
 
-      // 2. Insert in chunks of 500 — direct browser→Supabase, bypasses Vercel 4.5MB cap
-      const CHUNK = 500
-      const txs   = result.txs
-      for (let i = 0; i < txs.length; i += CHUNK) {
+      // 2. Insert frozen rows (historical — only on first load, won't duplicate due to delete skip)
+      const CHUNK = 50
+      const toInsert = [...frozen, ...live]
+      for (let i = 0; i < toInsert.length; i += CHUNK) {
+        setMsg(`Saving… ${Math.min(i + CHUNK, toInsert.length)} / ${toInsert.length} rows`)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (db.from("pp_transactions") as any).insert(txs.slice(i, i + CHUNK))
+        const { error } = await (db.from("pp_transactions") as any).insert(toInsert.slice(i, i + CHUNK))
         if (error) throw new Error(error.message)
-        setMsg(`Saving… ${Math.min(i + CHUNK, txs.length)} / ${txs.length}`)
       }
 
-      setMsg(`✓ ${txs.length} rows saved. Previous ${label} data cleared and replaced.`)
+      const frozenNote = frozenRows > 0 ? ` (${frozenRows} historical rows ≤ 31-Mar-26 also stored as frozen)` : ""
+      setMsg(`✓ ${toInsert.length} rows saved — all columns preserved.${frozenNote} Previous ${label} (live) data replaced.`)
       setResult(null); setFileName("")
-      // Refresh parent
       onSave([])
-      setTimeout(() => setMsg(""), 5000)
+      setTimeout(() => setMsg(""), 6000)
     } catch(e: unknown) {
       setErr("Save failed: " + (e instanceof Error ? e.message : String(e)))
     } finally {
@@ -291,6 +368,10 @@ export default function FileUpload({ onSave }: Props) {
             <p className="text-xs text-slate-500 mt-0.5">
               Upload .zip or .xlsx from Zoho — reads item-level rows, auto-maps columns, replaces existing data.
             </p>
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className="bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded">🔒 FY 2025-26 frozen</span>
+              <span className="text-slate-400">Data ≤ 31-Mar-26 is protected. Uploads only update {LIVE_FROM} onwards.</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <select
