@@ -804,29 +804,38 @@ function PLTab() {
         </div>
       )}
 
-      {/* ── FY25 vs FY26 ── */}
+      {/* ── ALL YEARS CARDS ── */}
       {view==="annual" && (
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
-          {([["FY 2024-25",fy25],["FY 2025-26",fy26]] as const).map(([label,d]:any,idx)=>(
-            <div key={idx} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20,borderTop:`3px solid ${idx===1?C.accent:C.border}`}}>
-              <div style={{color:idx===1?C.accent:C.neutral,fontWeight:800,fontSize:14,marginBottom:16}}>{label}</div>
-              {[
-                {label:"Gross Sales",val:d.sales,color:C.white,bold:true},
-                {label:"(-) Discounts & Trade",val:d.discounts,color:C.negative},
-                {label:"Net Revenue",val:d.netSales,color:C.white,bold:true},
-                {label:"(-) Cost of Goods Sold",val:-d.cogs,color:C.negative},
-                {label:"Gross Profit",val:d.grossProfit,color:C.positive,bold:true},
-                {label:"Gross Margin %",val:pct(d.grossProfit,d.netSales),color:C.accent,isStr:true},
-                {label:"(-) Operating Expenses",val:-d.opex,color:C.negative},
-                {label:"EBITDA",val:d.ebitda,color:d.ebitda>=0?C.positive:C.negative,bold:true},
-              ].map((r:any,j)=>(
-                <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}22`}}>
-                  <span style={{color:r.bold?C.white:C.dimText,fontSize:12,fontWeight:r.bold?600:400}}>{r.label}</span>
-                  <span style={{color:r.color,fontSize:12,fontWeight:r.bold?700:500}}>{r.isStr?r.val:r.val<0?`(${fmt(-r.val,true)})`:fmt(r.val,true)}</span>
-                </div>
-              ))}
-            </div>
-          ))}
+        <div style={{overflowX:"auto"}}>
+          <div style={{display:"flex",gap:12,minWidth:"max-content",paddingBottom:8}}>
+            {[
+              {label:"FY 2020-21", income:2.35,  revOps:2.36,  cogs:0,      grossProfit:2.35,  gm:null, opex:10.24, ebitda:-7.89,  isCurr:false},
+              {label:"FY 2021-22", income:14.62, revOps:14.61, cogs:0,      grossProfit:14.62, gm:null, opex:33.83, ebitda:-32.53, isCurr:false},
+              {label:"FY 2022-23", income:40.67, revOps:40.67, cogs:0,      grossProfit:40.67, gm:null, opex:141.64,ebitda:-100.97,isCurr:false},
+              {label:"FY 2023-24", income:89.08, revOps:88.58, cogs:0,      grossProfit:89.08, gm:null, opex:227.11,ebitda:-138.03,isCurr:false},
+              {label:"FY 2024-25", income:fy25.sales/100000, revOps:fy25.netSales/100000, cogs:fy25.cogs/100000, grossProfit:fy25.grossProfit/100000, gm:pct(fy25.grossProfit,fy25.netSales), opex:fy25.opex/100000, ebitda:fy25.ebitda/100000, isCurr:false, disc:Math.abs(fy25.discounts)/100000},
+              {label:"FY 2025-26", income:fy26.sales/100000, revOps:fy26.netSales/100000, cogs:fy26.cogs/100000, grossProfit:fy26.grossProfit/100000, gm:pct(fy26.grossProfit,fy26.netSales), opex:fy26.opex/100000, ebitda:fy26.ebitda/100000, isCurr:true,  disc:Math.abs(fy26.discounts)/100000},
+            ].map((d,idx)=>(
+              <div key={idx} style={{background:C.surface,border:`1px solid ${d.isCurr?C.accent:C.border}`,borderRadius:12,padding:18,width:200,flexShrink:0,borderTop:`3px solid ${d.isCurr?C.accent:C.border}`}}>
+                <div style={{color:d.isCurr?C.accent:C.neutral,fontWeight:800,fontSize:13,marginBottom:14}}>{d.label}{d.isCurr?" ✦":""}</div>
+                {[
+                  {label:"Gross Sales",       val:`₹${d.income.toFixed(1)}L`,   color:C.white,    bold:true},
+                  {label:"(-) Discounts",     val:d.disc?`(₹${d.disc.toFixed(1)}L)`:"—",  color:C.negative, bold:false},
+                  {label:"Net Revenue",       val:`₹${d.revOps.toFixed(1)}L`,  color:C.white,    bold:true},
+                  {label:"(-) COGS",          val:d.cogs?`(₹${d.cogs.toFixed(1)}L)`:"—",  color:C.negative, bold:false},
+                  {label:"Gross Profit",      val:`₹${d.grossProfit.toFixed(1)}L`, color:C.positive, bold:true},
+                  {label:"Gross Margin",      val:d.gm||"—",                   color:C.accent,   bold:false, isStr:true},
+                  {label:"(-) OpEx",          val:`(₹${d.opex.toFixed(1)}L)`,  color:C.negative, bold:false},
+                  {label:"EBITDA",            val:`(₹${Math.abs(d.ebitda).toFixed(1)}L)`, color:C.negative, bold:true},
+                ].map((r,j)=>(
+                  <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}22`,gap:8}}>
+                    <span style={{color:r.bold?C.white:C.dimText,fontSize:10,fontWeight:r.bold?600:400,whiteSpace:"nowrap" as const}}>{r.label}</span>
+                    <span style={{color:r.color,fontSize:11,fontWeight:r.bold?700:500,whiteSpace:"nowrap" as const}}>{r.val}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
