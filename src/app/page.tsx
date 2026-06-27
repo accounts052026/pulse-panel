@@ -428,20 +428,20 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
                   <div style={{color:C.dimText,fontSize:10}}>What platforms owe CURRYiT</div>
                 </div>
               </div>
-              <div style={{overflowX:"auto"}}>
+              <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"420px"}}>
                 <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
                   <thead>
                     <tr style={{background:C.surfaceAlt}}>
-                      <th style={{padding:"10px 16px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,minWidth:180}}>LINE ITEM</th>
+                      <th style={{padding:"10px 16px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,minWidth:180,position:"sticky" as const,left:0,top:0,zIndex:3,background:C.surfaceAlt}}>LINE ITEM</th>
                       {platforms.map(p=>(
-                        <th key={p.name} style={{padding:"8px 14px",textAlign:"center" as const,borderLeft:`1px solid ${C.border}`,minWidth:110}}>
+                        <th key={p.name} style={{padding:"8px 14px",textAlign:"center" as const,borderLeft:`1px solid ${C.border}`,minWidth:110,position:"sticky" as const,top:0,zIndex:2,background:C.surfaceAlt}}>
                           <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:4}}>
                             <PlatformLogo name={p.name} size={22}/>
                             <span style={{color:p.color,fontWeight:700,fontSize:10}}>{p.name}</span>
                           </div>
                         </th>
                       ))}
-                      <th style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,minWidth:100,color:C.accent,fontWeight:700,fontSize:9,letterSpacing:1}}>TOTAL</th>
+                      <th style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,minWidth:100,color:C.accent,fontWeight:700,fontSize:9,letterSpacing:1,position:"sticky" as const,top:0,right:0,zIndex:3,background:C.surfaceAlt}}>TOTAL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -450,7 +450,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
                       const total = vals.reduce((a,b)=>a+b,0)
                       return (
                         <tr key={i} style={{borderBottom:`1px solid ${row.divider?C.accent+"33":C.border+"88"}`,background:row.final?"#22C55E08":row.highlight?C.surfaceAlt:"transparent",borderTop:row.divider?`1px solid ${C.border}`:"none"}}>
-                          <td style={{padding:"9px 16px"}}>
+                          <td style={{padding:"9px 16px",position:"sticky" as const,left:0,zIndex:1,background:row.final?"#22C55E08":row.highlight?C.surfaceAlt:C.bg}}>
                             <div style={{color:row.final?C.positive:row.bold?C.white:C.neutral,fontWeight:row.bold?700:400,fontSize:row.final?12:11}}>{row.label}</div>
                             <div style={{color:C.dimText,fontSize:9,marginTop:1}}>{row.sub}</div>
                           </td>
@@ -459,7 +459,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
                               {v===0?"—":fmt(v,true)}
                             </td>
                           ))}
-                          <td style={{padding:"9px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:total===0?C.dimText:valColor(total),fontWeight:800,fontSize:row.final?13:11}}>
+                          <td style={{padding:"9px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:total===0?C.dimText:valColor(total),fontWeight:800,fontSize:row.final?13:11,position:"sticky" as const,right:0,background:row.final?"#22C55E08":row.highlight?C.surfaceAlt:C.bg}}>
                             {total===0?"—":fmt(total,true)}
                           </td>
                         </tr>
@@ -479,20 +479,20 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
                   <div style={{color:C.dimText,fontSize:10}}>Marketing, fulfilment & ad spend — what CURRYiT owes platforms</div>
                 </div>
               </div>
-              <div style={{overflowX:"auto"}}>
+              <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"360px"}}>
                 <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
                   <thead>
                     <tr style={{background:C.surfaceAlt}}>
-                      <th style={{padding:"10px 16px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,minWidth:180}}>LINE ITEM</th>
+                      <th style={{padding:"10px 16px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,minWidth:180,position:"sticky" as const,left:0,top:0,zIndex:3,background:C.surfaceAlt}}>LINE ITEM</th>
                       {platforms.map(p=>(
-                        <th key={p.name} style={{padding:"8px 14px",textAlign:"center" as const,borderLeft:`1px solid ${C.border}`,minWidth:110}}>
+                        <th key={p.name} style={{padding:"8px 14px",textAlign:"center" as const,borderLeft:`1px solid ${C.border}`,minWidth:110,position:"sticky" as const,top:0,zIndex:2,background:C.surfaceAlt}}>
                           <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:4}}>
                             <PlatformLogo name={p.name} size={22}/>
                             <span style={{color:p.color,fontWeight:700,fontSize:10}}>{p.name}</span>
                           </div>
                         </th>
                       ))}
-                      <th style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,minWidth:100,color:C.accent,fontWeight:700,fontSize:9,letterSpacing:1}}>TOTAL</th>
+                      <th style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,minWidth:100,color:C.accent,fontWeight:700,fontSize:9,letterSpacing:1,position:"sticky" as const,top:0,right:0,zIndex:3,background:C.surfaceAlt}}>TOTAL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -501,7 +501,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
                       const total = vals.reduce((a,b)=>a+b,0)
                       return (
                         <tr key={i} style={{borderBottom:`1px solid ${row.divider?C.accent+"33":C.border+"88"}`,background:row.final?"#EF44440A":row.highlight?C.surfaceAlt:"transparent",borderTop:row.divider?`1px solid ${C.border}`:"none"}}>
-                          <td style={{padding:"9px 16px"}}>
+                          <td style={{padding:"9px 16px",position:"sticky" as const,left:0,zIndex:1,background:row.final?"#EF44440A":row.highlight?C.surfaceAlt:C.bg}}>
                             <div style={{color:row.final?C.negative:row.bold?C.white:C.neutral,fontWeight:row.bold?700:400,fontSize:row.final?12:11}}>{row.label}</div>
                             <div style={{color:C.dimText,fontSize:9,marginTop:1}}>{row.sub}</div>
                           </td>
@@ -510,7 +510,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
                               {v===0?"—":fmt(v,true)}
                             </td>
                           ))}
-                          <td style={{padding:"9px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:total===0?C.dimText:valColor(total,true),fontWeight:800,fontSize:row.final?13:11}}>
+                          <td style={{padding:"9px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:total===0?C.dimText:valColor(total,true),fontWeight:800,fontSize:row.final?13:11,position:"sticky" as const,right:0,background:row.final?"#EF44440A":row.highlight?C.surfaceAlt:C.bg}}>
                             {total===0?"—":fmt(total,true)}
                           </td>
                         </tr>
@@ -521,13 +521,13 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
               </div>
             </div>
 
-            {/* ── NET POSITION ROW ── */}
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            {/* ── NET POSITION ROW — sticky at bottom ── */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",position:"sticky" as const,bottom:0,zIndex:10,boxShadow:`0 -4px 20px ${C.bg}CC`}}>
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
                   <tbody>
                     <tr style={{background:C.accentDim}}>
-                      <td style={{padding:"12px 16px",minWidth:180}}>
+                      <td style={{padding:"12px 16px",minWidth:180,position:"sticky" as const,left:0,background:C.accentDim,zIndex:2}}>
                         <div style={{color:C.accent,fontWeight:800,fontSize:12}}>NET POSITION  ✦</div>
                         <div style={{color:C.dimText,fontSize:9,marginTop:1}}>AR4 + AP4 per platform</div>
                       </td>
