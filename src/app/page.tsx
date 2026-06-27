@@ -804,40 +804,87 @@ function PLTab() {
         </div>
       )}
 
-      {/* ── ALL YEARS CARDS ── */}
-      {view==="annual" && (
-        <div style={{overflowX:"auto"}}>
-          <div style={{display:"flex",gap:12,minWidth:"max-content",paddingBottom:8}}>
-            {[
-              {label:"FY 2020-21", income:2.35,  revOps:2.36,  cogs:0,      grossProfit:2.35,  gm:null, opex:10.24, ebitda:-7.89,  isCurr:false},
-              {label:"FY 2021-22", income:14.62, revOps:14.61, cogs:0,      grossProfit:14.62, gm:null, opex:33.83, ebitda:-32.53, isCurr:false},
-              {label:"FY 2022-23", income:40.67, revOps:40.67, cogs:0,      grossProfit:40.67, gm:null, opex:141.64,ebitda:-100.97,isCurr:false},
-              {label:"FY 2023-24", income:89.08, revOps:88.58, cogs:0,      grossProfit:89.08, gm:null, opex:227.11,ebitda:-138.03,isCurr:false},
-              {label:"FY 2024-25", income:fy25.sales/100000, revOps:fy25.netSales/100000, cogs:fy25.cogs/100000, grossProfit:fy25.grossProfit/100000, gm:pct(fy25.grossProfit,fy25.netSales), opex:fy25.opex/100000, ebitda:fy25.ebitda/100000, isCurr:false, disc:Math.abs(fy25.discounts)/100000},
-              {label:"FY 2025-26", income:fy26.sales/100000, revOps:fy26.netSales/100000, cogs:fy26.cogs/100000, grossProfit:fy26.grossProfit/100000, gm:pct(fy26.grossProfit,fy26.netSales), opex:fy26.opex/100000, ebitda:fy26.ebitda/100000, isCurr:true,  disc:Math.abs(fy26.discounts)/100000},
-            ].map((d,idx)=>(
-              <div key={idx} style={{background:C.surface,border:`1px solid ${d.isCurr?C.accent:C.border}`,borderRadius:12,padding:18,width:200,flexShrink:0,borderTop:`3px solid ${d.isCurr?C.accent:C.border}`}}>
-                <div style={{color:d.isCurr?C.accent:C.neutral,fontWeight:800,fontSize:13,marginBottom:14}}>{d.label}{d.isCurr?" ✦":""}</div>
-                {[
-                  {label:"Gross Sales",       val:`₹${d.income.toFixed(1)}L`,   color:C.white,    bold:true},
-                  {label:"(-) Discounts",     val:d.disc?`(₹${d.disc.toFixed(1)}L)`:"—",  color:C.negative, bold:false},
-                  {label:"Net Revenue",       val:`₹${d.revOps.toFixed(1)}L`,  color:C.white,    bold:true},
-                  {label:"(-) COGS",          val:d.cogs?`(₹${d.cogs.toFixed(1)}L)`:"—",  color:C.negative, bold:false},
-                  {label:"Gross Profit",      val:`₹${d.grossProfit.toFixed(1)}L`, color:C.positive, bold:true},
-                  {label:"Gross Margin",      val:d.gm||"—",                   color:C.accent,   bold:false, isStr:true},
-                  {label:"(-) OpEx",          val:`(₹${d.opex.toFixed(1)}L)`,  color:C.negative, bold:false},
-                  {label:"EBITDA",            val:`(₹${Math.abs(d.ebitda).toFixed(1)}L)`, color:C.negative, bold:true},
-                ].map((r,j)=>(
-                  <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}22`,gap:8}}>
-                    <span style={{color:r.bold?C.white:C.dimText,fontSize:10,fontWeight:r.bold?600:400,whiteSpace:"nowrap" as const}}>{r.label}</span>
-                    <span style={{color:r.color,fontSize:11,fontWeight:r.bold?700:500,whiteSpace:"nowrap" as const}}>{r.val}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
+      {/* ── ALL YEARS TABLE — rows=metrics, cols=FY ── */}
+      {view==="annual" && (()=>{
+        // All values in ₹ Lakhs
+        const yrs = [
+          {fy:"FY21", sales:2.35,   disc:0,      netSales:2.35,  cogs:0,     gp:2.35,   empBen:3.60,  advMkt:0,      logistics:0,    rent:0,     otherOpex:6.64,  totalOpex:10.24, ebitda:-7.89},
+          {fy:"FY22", sales:14.62,  disc:0,      netSales:14.61, cogs:0,     gp:14.62,  empBen:8.38,  advMkt:14.74,  logistics:0.75, rent:0,     otherOpex:9.96,  totalOpex:33.83, ebitda:-32.53},
+          {fy:"FY23", sales:40.67,  disc:0,      netSales:40.67, cogs:0,     gp:40.67,  empBen:26.81, advMkt:40.73,  logistics:7.75, rent:0,     otherOpex:66.35, totalOpex:141.64,ebitda:-100.97},
+          {fy:"FY24", sales:89.08,  disc:0,      netSales:88.58, cogs:0,     gp:89.08,  empBen:38.00, advMkt:74.15,  logistics:26.84,rent:0,     otherOpex:88.12, totalOpex:227.11,ebitda:-138.03},
+          {fy:"FY25", sales:614.92, disc:224.90, netSales:393.40,cogs:232.45,gp:160.96, empBen:82.82, advMkt:215.71, logistics:31.79,rent:13.17, otherOpex:400.32,totalOpex:744.81,ebitda:-350.05},
+          {fy:"FY26", sales:1007.08,disc:366.67, netSales:642.97,cogs:317.43,gp:325.54, empBen:146.83,advMkt:329.87, logistics:53.97,rent:18.99, otherOpex:323.49,totalOpex:739.12,ebitda:-413.58},
+        ]
+
+        const rows: {label:string, sub:string, key:keyof typeof yrs[0], bold?:boolean, color:string, divider?:boolean, pctOf?:keyof typeof yrs[0], final?:boolean}[] = [
+          {label:"Gross Sales",         sub:"Total invoiced",             key:"sales",      bold:true,  color:C.white},
+          {label:"(-) Discounts",       sub:"Trade margins & returns",    key:"disc",       bold:false, color:C.negative},
+          {label:"Net Revenue",         sub:"After discounts",            key:"netSales",   bold:true,  color:C.white,   divider:true},
+          {label:"(-) COGS",            sub:"Raw mat + packaging + mfg",  key:"cogs",       bold:false, color:C.negative},
+          {label:"Gross Profit",        sub:"Net Revenue − COGS",         key:"gp",         bold:true,  color:C.positive,divider:true},
+          {label:"Gross Margin %",      sub:"GP / Net Revenue",           key:"gp",         bold:false, color:C.accent,  pctOf:"netSales"},
+          {label:"Employee Cost",       sub:"Salaries & wages",           key:"empBen",     bold:false, color:C.neutral},
+          {label:"Adv & Marketing",     sub:"Platform ads + brand spends",key:"advMkt",     bold:false, color:C.negative},
+          {label:"Logistics",           sub:"Outbound + internal",        key:"logistics",  bold:false, color:C.neutral},
+          {label:"Rent",                sub:"Office + warehouse",         key:"rent",       bold:false, color:C.neutral},
+          {label:"Other OpEx",          sub:"All other expenses",         key:"otherOpex",  bold:false, color:C.neutral},
+          {label:"Total OpEx",          sub:"All operating expenses",     key:"totalOpex",  bold:true,  color:C.negative,divider:true},
+          {label:"EBITDA",              sub:"Gross Profit − Total OpEx",  key:"ebitda",     bold:true,  color:C.negative,final:true},
+          {label:"EBITDA Margin %",     sub:"EBITDA / Net Revenue",       key:"ebitda",     bold:false, color:C.negative,pctOf:"netSales"},
+        ]
+
+        return (
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                <thead>
+                  <tr style={{background:C.surfaceAlt}}>
+                    <th style={{padding:"10px 14px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,position:"sticky" as const,left:0,background:C.surfaceAlt,borderRight:`1px solid ${C.border}`,minWidth:160,zIndex:3}}>PARTICULARS</th>
+                    {yrs.map(y=>(
+                      <th key={y.fy} style={{padding:"10px 14px",textAlign:"right" as const,color:y.fy==="FY26"?C.accent:C.dimText,fontWeight:y.fy==="FY26"?800:600,fontSize:y.fy==="FY26"?12:10,minWidth:80,borderLeft:`1px solid ${C.border}`,background:y.fy==="FY26"?C.accentDim:"transparent",whiteSpace:"nowrap" as const}}>
+                        {y.fy}{y.fy==="FY26"?" ✦":""}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${row.divider||row.final?C.border:C.border+"55"}`,background:row.final?C.negativeDim:row.bold&&!row.pctOf?C.surfaceAlt:"transparent",borderTop:row.divider?`1px solid ${C.accent}22`:"none"}}>
+                      <td style={{padding:"8px 14px",position:"sticky" as const,left:0,background:row.final?C.negativeDim:row.bold&&!row.pctOf?C.surfaceAlt:C.bg,borderRight:`1px solid ${C.border}`,zIndex:1}}>
+                        <div style={{color:row.final?C.negative:row.bold?C.white:C.neutral,fontWeight:row.bold?700:400,fontSize:row.final?12:11,whiteSpace:"nowrap" as const}}>{row.label}</div>
+                        <div style={{color:C.dimText,fontSize:8,marginTop:1}}>{row.sub}</div>
+                      </td>
+                      {yrs.map((y,j)=>{
+                        const raw = y[row.key] as number
+                        const val = row.pctOf ? (raw&&y[row.pctOf]?((raw/( y[row.pctOf] as number))*100):null) : raw
+                        const isCurr = y.fy==="FY26"
+                        const prev = j>0?(yrs[j-1][row.key] as number):null
+                        const grew = prev!==null&&Math.abs(raw)>Math.abs(prev)
+                        const display = row.pctOf
+                          ? (val!==null&&val!==0?`${Math.abs(val as number).toFixed(1)}%`:"—")
+                          : (raw===0?"—":raw<0?`(₹${Math.abs(raw).toFixed(1)}L)`:`₹${raw.toFixed(1)}L`)
+                        const textColor = isCurr ? row.color : (raw===0?C.dimText+"44":row.color)
+                        return (
+                          <td key={j} style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,color:textColor,fontWeight:isCurr?700:row.bold?600:400,background:isCurr?C.accentDim+"55":"transparent",fontSize:isCurr?12:10}}>
+                            {display}
+                            {!row.pctOf&&j>0&&raw!==0&&prev!==null&&prev!==0&&(
+                              <span style={{color:grew?(row.key==="ebitda"?C.negative+"88":C.positive+"88"):(row.key==="ebitda"?C.positive+"88":C.negative+"88"),fontSize:8,marginLeft:3}}>{grew?"↑":"↓"}</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{padding:"8px 14px",background:C.surfaceAlt,borderTop:`1px solid ${C.border}`,display:"flex",gap:16,flexWrap:"wrap" as const}}>
+              <span style={{color:C.dimText,fontSize:9}}>All figures in ₹ Lakhs · FY21-FY24 from management accounts · FY25-FY26 from Zoho Books</span>
+              <span style={{color:C.dimText,fontSize:9}}>↑↓ = year-on-year change vs previous year</span>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── OPEX ── */}
       {view==="opex" && (
