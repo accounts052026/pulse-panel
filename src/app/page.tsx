@@ -522,7 +522,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
             </div>
 
             {/* ── NET POSITION ROW — sticky at bottom ── */}
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",overflow:"hidden"}}>
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
                   <tbody>
