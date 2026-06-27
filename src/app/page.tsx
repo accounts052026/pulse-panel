@@ -381,138 +381,177 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
         {selP && <NavTab label={`${selP} Detail`} active={view==="platform_detail"} onClick={()=>setView("platform_detail")}/>}
       </div>
 
-      {/* ── SUMMARY VIEW — the better view ── */}
-      {view==="summary" && (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* AR side — what platforms owe you */}
-          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:C.positiveDim,display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:C.positive}}/>
-              <span style={{color:C.white,fontWeight:700,fontSize:13}}>ACCOUNTS RECEIVABLE — What Platforms Owe You</span>
-            </div>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
-                <thead><tr>
-                  <Th>Platform</Th>
-                  <Th>Gross Invoice</Th>
-                  <Th>Returns</Th>
-                  <Th>Net Sales</Th>
-                  <Th>Payment Recd</Th>
-                  <Th>BFD Setoff</Th>
-                  <Th>Adjustments</Th>
-                  <Th>AR4 (Final)</Th>
-                </tr></thead>
-                <tbody>
-                  {platforms.map((p,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}
-                      onClick={()=>{setSelP(p.name);setView("platform_detail")}}
-                      onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <td style={{padding:"10px 12px"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <PlatformLogo name={p.name} size={20}/>
-                          <span style={{color:p.color,fontWeight:700}}>{p.name}</span>
-                        </div>
-                      </td>
-                      <td style={{padding:"10px 12px",color:C.white}}>{fmt(p.invoice,true)}</td>
-                      <td style={{padding:"10px 12px",color:p.returns<0?C.negative:C.neutral}}>{p.returns!==0?fmt(p.returns,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.white,fontWeight:600}}>{fmt(p.netSales,true)}</td>
-                      <td style={{padding:"10px 12px",color:p.payment<0?C.negative:C.neutral}}>{p.payment!==0?fmt(p.payment,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.accent}}>{p.bfd!==0?fmt(p.bfd,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:p.adjustments<0?C.negative:C.neutral}}>{p.adjustments!==0?fmt(p.adjustments,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:p.ar4>=0?C.positive:C.negative,fontWeight:800,fontSize:12}}>{fmt(p.ar4,true)}</td>
-                    </tr>
-                  ))}
-                  <tr style={{background:C.surfaceAlt,fontWeight:800}}>
-                    <td style={{padding:"10px 12px",color:C.accent,fontSize:12}}>TOTAL</td>
-                    <td style={{padding:"10px 12px",color:C.white}}>{fmt(totInv,true)}</td>
-                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(platforms.reduce((s,p)=>s+p.returns,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.white}}>{fmt(platforms.reduce((s,p)=>s+p.netSales,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(platforms.reduce((s,p)=>s+p.payment,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.accent}}>{fmt(totBFD,true)}</td>
-                    <td style={{padding:"10px 12px",color:C.neutral}}>{fmt(platforms.reduce((s,p)=>s+p.adjustments,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.positive,fontSize:13}}>{fmt(totAR4,true)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* ── SUMMARY VIEW — platforms as columns ── */}
+      {view==="summary" && (()=>{
+        const arRows = [
+          {key:"invoice",    label:"Gross Sales",       sub:"Invoiced to platform",         bold:false, divider:false},
+          {key:"returns",    label:"(-) Returns & CNs", sub:"Credit notes raised",           bold:false, divider:false},
+          {key:"netSales",   label:"Net Sales",         sub:"After returns",                 bold:true,  divider:true},
+          {key:"payment",    label:"(-) Payment Recd",  sub:"Cash received from platform",   bold:false, divider:false},
+          {key:"ar1",        label:"AR — 1",            sub:"Net Sales minus Payment",        bold:true,  divider:false, highlight:true},
+          {key:"tds",        label:"(-) TDS",           sub:"Tax deducted at source",         bold:false, divider:false},
+          {key:"ar2",        label:"AR — 2",            sub:"After TDS",                     bold:true,  divider:false, highlight:true},
+          {key:"bfd",        label:"(-) BFD",           sub:"Brand funded discounts",         bold:false, divider:false},
+          {key:"ar3",        label:"AR — 3",            sub:"After BFD setoff",              bold:true,  divider:false, highlight:true},
+          {key:"adjustments",label:"(±) Adjustments",  sub:"AR/AP netting adjustments",     bold:false, divider:false},
+          {key:"ar4",        label:"AR — 4  ✦ FINAL",  sub:"Net receivable from platform",  bold:true,  divider:true,  highlight:true, final:true},
+        ]
+        const apRows = [
+          {key:"apInvoice",  label:"Platform Cost",     sub:"Invoiced by platform (ads/fees)",bold:false, divider:false},
+          {key:"apPayment",  label:"(-) Paid",          sub:"Amount paid to platform",        bold:false, divider:false},
+          {key:"ap1",        label:"AP — 1",            sub:"Outstanding platform cost",      bold:true,  divider:false, highlight:true},
+          {key:"debitNote",  label:"(+) Debit Note",   sub:"Debit notes raised",             bold:false, divider:false},
+          {key:"ap2",        label:"AP — 2",            sub:"After debit notes",              bold:true,  divider:false, highlight:true},
+          {key:"tdsDed",     label:"(-) TDS Deducted", sub:"TDS on platform payments",       bold:false, divider:false},
+          {key:"ap3",        label:"AP — 3",            sub:"After TDS",                     bold:true,  divider:false, highlight:true},
+          {key:"apAdj",      label:"(±) Adjustments",  sub:"Netting adjustments",            bold:false, divider:false},
+          {key:"ap4",        label:"AP — 4  ✦ FINAL",  sub:"Net payable to platform",        bold:true,  divider:true,  highlight:true, final:true},
+        ]
 
-          {/* AP side — what you owe platforms */}
-          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:C.negativeDim,display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:C.negative}}/>
-              <span style={{color:C.white,fontWeight:700,fontSize:13}}>PLATFORM COSTS (AP) — Marketing, Fulfillment & Ad Spend Payables</span>
-            </div>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
-                <thead><tr>
-                  <Th>Platform</Th>
-                  <Th>Cost Invoiced</Th>
-                  <Th>Paid</Th>
-                  <Th>AP1 (Outstanding)</Th>
-                  <Th>Debit Note</Th>
-                  <Th>TDS Deducted</Th>
-                  <Th>Adjustments</Th>
-                  <Th>AP4 (Net Payable)</Th>
-                </tr></thead>
-                <tbody>
-                  {platforms.filter(p=>p.apInvoice!==0||p.ap4!==0).map((p,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}
-                      onClick={()=>{setSelP(p.name);setView("platform_detail")}}
-                      onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <td style={{padding:"10px 12px"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <PlatformLogo name={p.name} size={20}/>
-                          <span style={{color:p.color,fontWeight:700}}>{p.name}</span>
-                        </div>
-                      </td>
-                      <td style={{padding:"10px 12px",color:C.negative}}>{p.apInvoice!==0?fmt(p.apInvoice,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.positive}}>{p.apPayment!==0?fmt(p.apPayment,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.negative,fontWeight:600}}>{p.ap1!==0?fmt(p.ap1,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.neutral}}>{p.debitNote!==0?fmt(p.debitNote,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.positive}}>{p.tdsDed!==0?fmt(p.tdsDed,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:C.neutral}}>{p.apAdj!==0?fmt(p.apAdj,true):"—"}</td>
-                      <td style={{padding:"10px 12px",color:p.ap4<=0?C.negative:C.positive,fontWeight:800,fontSize:12}}>{fmt(p.ap4,true)}</td>
-                    </tr>
-                  ))}
-                  <tr style={{background:C.surfaceAlt,fontWeight:800}}>
-                    <td style={{padding:"10px 12px",color:C.accent,fontSize:12}}>TOTAL</td>
-                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(totPlatCost,true)}</td>
-                    <td style={{padding:"10px 12px",color:C.positive}}>{fmt(platforms.reduce((s,p)=>s+p.apPayment,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(platforms.reduce((s,p)=>s+p.ap1,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.neutral}}>{fmt(platforms.reduce((s,p)=>s+p.debitNote,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.positive}}>{fmt(platforms.reduce((s,p)=>s+p.tdsDed,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.neutral}}>{fmt(platforms.reduce((s,p)=>s+p.apAdj,0),true)}</td>
-                    <td style={{padding:"10px 12px",color:C.negative,fontSize:13}}>{fmt(totAP4,true)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+        const colStyle = (p: PlatformCalc) => ({padding:"10px 14px", textAlign:"right" as const, borderLeft:`1px solid ${C.border}`})
+        const valColor = (v:number, isAP=false) => {
+          if(v===0) return C.dimText
+          if(isAP) return v<0 ? C.negative : C.positive
+          return v<0 ? C.negative : C.positive
+        }
 
-          {/* Net position row */}
-          <div style={{background:C.surface,border:`1px solid ${totNet>=0?C.positive:C.negative}44`,borderRadius:12,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
-            <div>
-              <div style={{color:C.dimText,fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase" as const}}>Net Position (AR4 + AP4)</div>
-              <div style={{color:totNet>=0?C.positive:C.negative,fontSize:28,fontWeight:800,letterSpacing:-1,marginTop:4}}>{fmt(totNet,true)}</div>
-              <div style={{color:C.dimText,fontSize:11,marginTop:4}}>Click any platform row to drill down →</div>
-            </div>
-            <div style={{display:"flex",gap:24}}>
-              <div style={{textAlign:"center" as const}}>
-                <div style={{color:C.positive,fontSize:20,fontWeight:800}}>{fmt(totAR4,true)}</div>
-                <div style={{color:C.dimText,fontSize:10}}>Total AR4</div>
+        return (
+          <div style={{display:"flex",flexDirection:"column" as const,gap:16}}>
+
+            {/* ── AR TABLE ── */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+              {/* Section header */}
+              <div style={{padding:"10px 16px",background:"#22C55E0F",borderBottom:`1px solid ${C.positive}33`,display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:3,height:28,background:C.positive,borderRadius:2}}/>
+                <div>
+                  <div style={{color:C.positive,fontWeight:800,fontSize:12,letterSpacing:0.5}}>ACCOUNTS RECEIVABLE</div>
+                  <div style={{color:C.dimText,fontSize:10}}>What platforms owe CURRYiT</div>
+                </div>
               </div>
-              <div style={{color:C.border,fontSize:24,alignSelf:"center"}}>−</div>
-              <div style={{textAlign:"center" as const}}>
-                <div style={{color:C.negative,fontSize:20,fontWeight:800}}>{fmt(Math.abs(totAP4),true)}</div>
-                <div style={{color:C.dimText,fontSize:10}}>Total AP4</div>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                  <thead>
+                    <tr style={{background:C.surfaceAlt}}>
+                      <th style={{padding:"10px 16px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,minWidth:180}}>LINE ITEM</th>
+                      {platforms.map(p=>(
+                        <th key={p.name} style={{padding:"8px 14px",textAlign:"center" as const,borderLeft:`1px solid ${C.border}`,minWidth:110}}>
+                          <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:4}}>
+                            <PlatformLogo name={p.name} size={22}/>
+                            <span style={{color:p.color,fontWeight:700,fontSize:10}}>{p.name}</span>
+                          </div>
+                        </th>
+                      ))}
+                      <th style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,minWidth:100,color:C.accent,fontWeight:700,fontSize:9,letterSpacing:1}}>TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {arRows.map((row,i)=>{
+                      const vals = platforms.map(p=>(p as any)[row.key] as number)
+                      const total = vals.reduce((a,b)=>a+b,0)
+                      return (
+                        <tr key={i} style={{borderBottom:`1px solid ${row.divider?C.accent+"33":C.border+"88"}`,background:row.final?"#22C55E08":row.highlight?C.surfaceAlt:"transparent",borderTop:row.divider?`1px solid ${C.border}`:"none"}}>
+                          <td style={{padding:"9px 16px"}}>
+                            <div style={{color:row.final?C.positive:row.bold?C.white:C.neutral,fontWeight:row.bold?700:400,fontSize:row.final?12:11}}>{row.label}</div>
+                            <div style={{color:C.dimText,fontSize:9,marginTop:1}}>{row.sub}</div>
+                          </td>
+                          {vals.map((v,j)=>(
+                            <td key={j} style={{...colStyle(platforms[j]),color:v===0?C.dimText+"44":valColor(v),fontWeight:row.bold?700:400,fontSize:row.final?12:11}}>
+                              {v===0?"—":fmt(v,true)}
+                            </td>
+                          ))}
+                          <td style={{padding:"9px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:total===0?C.dimText:valColor(total),fontWeight:800,fontSize:row.final?13:11}}>
+                            {total===0?"—":fmt(total,true)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
+
+            {/* ── AP TABLE ── */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"10px 16px",background:"#EF44440F",borderBottom:`1px solid ${C.negative}33`,display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:3,height:28,background:C.negative,borderRadius:2}}/>
+                <div>
+                  <div style={{color:C.negative,fontWeight:800,fontSize:12,letterSpacing:0.5}}>PLATFORM COSTS (AP)</div>
+                  <div style={{color:C.dimText,fontSize:10}}>Marketing, fulfilment & ad spend — what CURRYiT owes platforms</div>
+                </div>
+              </div>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                  <thead>
+                    <tr style={{background:C.surfaceAlt}}>
+                      <th style={{padding:"10px 16px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,minWidth:180}}>LINE ITEM</th>
+                      {platforms.map(p=>(
+                        <th key={p.name} style={{padding:"8px 14px",textAlign:"center" as const,borderLeft:`1px solid ${C.border}`,minWidth:110}}>
+                          <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:4}}>
+                            <PlatformLogo name={p.name} size={22}/>
+                            <span style={{color:p.color,fontWeight:700,fontSize:10}}>{p.name}</span>
+                          </div>
+                        </th>
+                      ))}
+                      <th style={{padding:"8px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,minWidth:100,color:C.accent,fontWeight:700,fontSize:9,letterSpacing:1}}>TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apRows.map((row,i)=>{
+                      const vals = platforms.map(p=>(p as any)[row.key] as number)
+                      const total = vals.reduce((a,b)=>a+b,0)
+                      return (
+                        <tr key={i} style={{borderBottom:`1px solid ${row.divider?C.accent+"33":C.border+"88"}`,background:row.final?"#EF44440A":row.highlight?C.surfaceAlt:"transparent",borderTop:row.divider?`1px solid ${C.border}`:"none"}}>
+                          <td style={{padding:"9px 16px"}}>
+                            <div style={{color:row.final?C.negative:row.bold?C.white:C.neutral,fontWeight:row.bold?700:400,fontSize:row.final?12:11}}>{row.label}</div>
+                            <div style={{color:C.dimText,fontSize:9,marginTop:1}}>{row.sub}</div>
+                          </td>
+                          {vals.map((v,j)=>(
+                            <td key={j} style={{...colStyle(platforms[j]),color:v===0?C.dimText+"44":valColor(v,true),fontWeight:row.bold?700:400,fontSize:row.final?12:11}}>
+                              {v===0?"—":fmt(v,true)}
+                            </td>
+                          ))}
+                          <td style={{padding:"9px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:total===0?C.dimText:valColor(total,true),fontWeight:800,fontSize:row.final?13:11}}>
+                            {total===0?"—":fmt(total,true)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* ── NET POSITION ROW ── */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                  <tbody>
+                    <tr style={{background:C.accentDim}}>
+                      <td style={{padding:"12px 16px",minWidth:180}}>
+                        <div style={{color:C.accent,fontWeight:800,fontSize:12}}>NET POSITION  ✦</div>
+                        <div style={{color:C.dimText,fontSize:9,marginTop:1}}>AR4 + AP4 per platform</div>
+                      </td>
+                      {platforms.map((p,i)=>(
+                        <td key={i} style={{padding:"12px 14px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`}}>
+                          <div style={{color:p.net>=0?C.positive:C.negative,fontWeight:800,fontSize:13}}>{fmt(p.net,true)}</div>
+                          <div style={{marginTop:3}}>
+                            <Badge color={p.net>=0?C.positive:C.negative}>{p.net>=0?"+ve":"−ve"}</Badge>
+                          </div>
+                        </td>
+                      ))}
+                      <td style={{padding:"12px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`}}>
+                        <div style={{color:totNet>=0?C.positive:C.negative,fontWeight:800,fontSize:15}}>{fmt(totNet,true)}</div>
+                        <div style={{marginTop:3}}><Badge color={totNet>=0?C.positive:C.negative}>{totNet>=0?"+ve":"−ve"}</Badge></div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── WATERFALL VIEW ── */}
       {view==="waterfall" && (
