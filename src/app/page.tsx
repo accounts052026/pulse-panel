@@ -1173,7 +1173,7 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
 
     // Group by category in order
     // Include OTHER for unmapped vendors/expenses
-    const allCats = [...new Set(outKeys.map(k=>entries[k].category))]
+    const allCats = Array.from(new Set(outKeys.map(k=>entries[k].category)))
     const outCategories = [...CATEGORY_ORDER.filter(cat=>cat!=="PLATFORM IN"&&allCats.includes(cat)), ...allCats.filter(c=>!CATEGORY_ORDER.includes(c)&&c!=="PLATFORM IN")]
     outCategories.forEach(cat=>{
       const catKeys = outKeys.filter(k=>entries[k].category===cat)
