@@ -919,124 +919,243 @@ function PLTab() {
 
 // ─── CF TAB ───────────────────────────────────────────────────────────────────
 function CFTab({cfRows,wcRows}:{cfRows:string[][];wcRows:string[][]}) {
-  const [view,setView]=useState<"wc"|"monthly"|"vendors">("wc")
+  const [view,setView]=useState<"wc"|"monthly">("wc")
   const {months,cashIn,cashOut,netFlow}=extractCF(cfRows)
   const totalIn =months.map((_,i)=>Object.values(cashIn).reduce((s,a)=>s+(a[i]||0),0))
   const totalOut=months.map((_,i)=>Object.values(cashOut).reduce((s,a)=>s+(a[i]||0),0))
 
+  // ── WC PARSER ──
+  const parseWC = () => {
+    if(!wcRows||wcRows.length<3) return null
+    // Find year row (has 2025/2026) and month row (has 1-12)
+    let yearRowIdx=-1, monthRowIdx=-1
+    for(let i=0;i<Math.min(wcRows.length,8);i++){
+      const r=wcRows[i]
+      if(r.some(c=>c?.trim()==="2025"||c?.trim()==="2026")) yearRowIdx=i
+      const nums=r.filter(c=>{const v=Number(c?.trim());return !isNaN(v)&&v>=1&&v<=12&&c?.trim()!=""})
+      if(nums.length>=3) monthRowIdx=i
+    }
+    const yearRow=yearRowIdx>=0?wcRows[yearRowIdx]:[]
+    const monthRow=monthRowIdx>=0?wcRows[monthRowIdx]:[]
+    const MN=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    const colStart=2
+    const mLabels:string[]=[]
+    for(let i=colStart;i<Math.max(yearRow.length,monthRow.length,20);i++){
+      const m=monthRow[i]?.trim(), y=yearRow[i]?.trim()
+      if(m&&y&&!isNaN(Number(m))&&!isNaN(Number(y))&&Number(m)>=1&&Number(m)<=12)
+        mLabels.push(`${MN[Number(m)]} ${String(y).slice(2)}`)
+    }
+    const nCols=mLabels.length||12
+
+    interface WR{type:string;label:string;vals:number[];isHeader?:boolean;isTotal?:boolean;isCashBal?:boolean}
+    const rows:WR[]=[]
+    let curType=""
+    // Cash balance rows at top
+    for(let i=0;i<Math.min(5,wcRows.length);i++){
+      const r=wcRows[i]
+      if(r[0]?.toLowerCase().includes("cash balance")) rows.push({type:"BALANCE",label:r[0].trim(),vals:Array.from({length:nCols},(_,k)=>n(r[colStart+k]||"0")),isCashBal:true})
+    }
+    // Data rows
+    const TYPES=["FIXED COST","VARIABLE","REIMBURSEMENT","VENDOR PAYMENT","customer_payment"]
+    for(let i=0;i<wcRows.length;i++){
+      const r=wcRows[i]
+      if(!r) continue
+      const t=r[0]?.trim()||"", lb=r[1]?.trim()||r[0]?.trim()||""
+      const vals=Array.from({length:nCols},(_,k)=>n(r[colStart+k]||"0"))
+      if(TYPES.includes(t)){
+        curType=t==="customer_payment"?"CUSTOMER RECEIPT":t
+        rows.push({type:curType,label:curType,vals,isHeader:true})
+      } else if(t.toLowerCase().includes("monthly net cash")||t.toLowerCase().includes("net cash outflow")){
+        rows.push({type:"NET",label:"NET CASH FLOW",vals,isTotal:true})
+      } else if(lb&&curType){
+        rows.push({type:curType,label:lb,vals})
+      }
+    }
+    const netRow=rows.find(r=>r.isTotal)
+    const cashBal=rows.find(r=>r.isCashBal&&r.label.toLowerCase().includes("cash balance at current"))
+    return {mLabels,nCols,rows,netRow,cashBal}
+  }
+
+  const wc=parseWC()
+
   return (
     <div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-        <KpiCard label="Avg Monthly Cash In" value={fmt(totalIn.length?totalIn.reduce((a,b)=>a+b,0)/totalIn.length:0,true)} sub="Platform receipts avg" color={C.positive}/>
-        <KpiCard label="Avg Monthly Cash Out" value={fmt(totalOut.length?Math.abs(totalOut.reduce((a,b)=>a+b,0)/totalOut.length):0,true)} sub="All expenses avg" color={C.negative}/>
+        {view==="wc"&&wc?(
+          <>
+            <KpiCard label="Cash Balance" value={wc.cashBal?fmt(wc.cashBal.vals[0],true):"—"} sub="Current bank balance" color={C.positive}/>
+            <KpiCard label="Avg Monthly Net" value={wc.netRow?fmt(Math.abs(wc.netRow.vals.reduce((a,b)=>a+b,0)/wc.netRow.vals.length),true):"—"} sub={wc.netRow&&wc.netRow.vals.reduce((a,b)=>a+b,0)<0?"avg monthly deficit":"avg surplus"} color={wc.netRow&&wc.netRow.vals.reduce((a,b)=>a+b,0)<0?C.negative:C.positive}/>
+            <KpiCard label="Deficit Months" value={wc.netRow?`${wc.netRow.vals.filter(v=>v<0).length} / ${wc.nCols}`:"—"} sub="Months with cash burn" color={C.negative}/>
+            <KpiCard label="Best Month" value={wc.netRow?fmt(Math.max(...wc.netRow.vals),true):"—"} sub="Highest surplus month" color={C.positive}/>
+          </>
+        ):(
+          <>
+            <KpiCard label="Avg Monthly Cash In" value={fmt(totalIn.length?totalIn.reduce((a,b)=>a+b,0)/totalIn.length:0,true)} sub="Platform receipts avg" color={C.positive}/>
+            <KpiCard label="Avg Monthly Cash Out" value={fmt(totalOut.length?Math.abs(totalOut.reduce((a,b)=>a+b,0)/totalOut.length):0,true)} sub="All expenses avg" color={C.negative}/>
+          </>
+        )}
       </div>
+
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
         <NavTab label="Working Capital" active={view==="wc"} onClick={()=>setView("wc")}/>
         <NavTab label="Monthly Flow" active={view==="monthly"} onClick={()=>setView("monthly")}/>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
-          <div style={{color:C.white,fontWeight:700,marginBottom:4}}>Monthly Net Cash Flow</div>
-          {netFlow.length>0&&<BarChart data={netFlow.map((v,i)=>({label:(months[i]||"").substring(0,3),value:v}))} height={130}/>}
+
+      {/* ── WORKING CAPITAL VIEW ── */}
+      {view==="wc" && (!wc ? (
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:40,textAlign:"center" as const,color:C.dimText}}>
+          Working capital data loading... Click Refresh if this persists.
         </div>
-        {/* Cash IN table */}
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:C.positive}}/>
-            <span style={{color:C.white,fontWeight:700,fontSize:13}}>Cash IN — Platform Receipts</span>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column" as const,gap:12}}>
+          {/* Bar chart */}
+          {wc.netRow&&wc.netRow.vals.length>0&&(
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+              <div style={{color:C.white,fontWeight:700,fontSize:13,marginBottom:4}}>Monthly Net Cash Flow</div>
+              <div style={{color:C.dimText,fontSize:10,marginBottom:12}}>Cash receipts − Cash outflows (from bank data)</div>
+              <BarChart data={wc.netRow.vals.map((v,i)=>({label:wc.mLabels[i]?.substring(0,3)||`M${i+1}`,value:v}))} height={120}/>
+            </div>
+          )}
+          {/* Full table */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt}}>
+              <span style={{color:C.white,fontWeight:700,fontSize:13}}>Working Capital Requirement</span>
+              <span style={{color:C.dimText,fontSize:10,marginLeft:8}}>Live from bank data · {wc.nCols} months</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:10}}>
+                <thead>
+                  <tr style={{background:C.surfaceAlt}}>
+                    <th style={{padding:"8px 10px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,position:"sticky" as const,left:0,background:C.surfaceAlt,borderRight:`1px solid ${C.border}`,minWidth:55,zIndex:3,letterSpacing:1}}>TYPE</th>
+                    <th style={{padding:"8px 12px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,position:"sticky" as const,left:55,background:C.surfaceAlt,borderRight:`1px solid ${C.border}`,minWidth:180,zIndex:3,letterSpacing:1}}>PARTICULARS</th>
+                    {wc.mLabels.map((m,i)=>(
+                      <th key={i} style={{padding:"8px 10px",textAlign:"right" as const,color:C.dimText,fontWeight:600,fontSize:9,minWidth:72,borderLeft:`1px solid ${C.border}`,whiteSpace:"nowrap" as const}}>{m}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {wc.rows.filter(r=>!r.isCashBal).map((row,i)=>{
+                    const TCOLOR:Record<string,string>={"FIXED COST":C.negative,"VARIABLE":C.negative,"REIMBURSEMENT":"#D97706","VENDOR PAYMENT":C.negative,"CUSTOMER RECEIPT":C.positive,"NET":C.accent,"BALANCE":C.neutral}
+                    const tc=TCOLOR[row.type]||C.neutral
+                    const isPos=row.type==="CUSTOMER RECEIPT"
+                    const bgMap:Record<string,string>={"FIXED COST":C.negativeDim,"VARIABLE":C.negativeDim,"REIMBURSEMENT":"#D9770610","VENDOR PAYMENT":C.negativeDim,"CUSTOMER RECEIPT":C.positiveDim,"NET":C.accentDim}
+                    const bg=row.isHeader||row.isTotal?bgMap[row.type]||C.surfaceAlt:"transparent"
+                    const stickyBg=row.isHeader||row.isTotal?bgMap[row.type]||C.surfaceAlt:C.bg
+                    return (
+                      <tr key={i} style={{borderBottom:`1px solid ${row.isHeader||row.isTotal?C.border:C.border+"44"}`,background:bg}}>
+                        <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const}}>
+                          {(row.isHeader||row.isTotal)&&<Badge color={row.isTotal?C.accent:tc}>{row.isTotal?"NET":row.type.split(" ")[0]}</Badge>}
+                        </td>
+                        <td style={{padding:"5px 12px",position:"sticky" as const,left:55,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,color:row.isTotal?C.accent:row.isHeader?tc:C.white,fontWeight:row.isTotal||row.isHeader?700:400,whiteSpace:"nowrap" as const,fontSize:row.isTotal?11:10}}>
+                          {row.label}
+                        </td>
+                        {row.vals.map((v,j)=>(
+                          <td key={j} style={{padding:"5px 10px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,color:v===0?C.dimText+"55":isPos?(v>0?C.positive:C.negative):(v<0?C.negative:C.positive),fontWeight:row.isTotal||row.isHeader?700:400,fontSize:row.isTotal?11:10,background:row.isTotal?(v>=0?C.positiveDim:C.negativeDim):"transparent"}}>
+                            {v===0?"—":v<0?`(${fmt(Math.abs(v),true)})`:fmt(v,true)}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11,minWidth:900}}>
-              <thead><tr style={{background:C.surfaceAlt}}>
-                <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 12px",textAlign:"left" as const,letterSpacing:1,minWidth:110}}>PLATFORM</th>
-                {months.map(m=><th key={m} style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{m}</th>)}
-                <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const}}>TOTAL</th>
-              </tr></thead>
-              <tbody>
-                {Object.entries(cashIn).map(([p,vals],i)=>{
-                  const total=vals.reduce((a,b)=>a+b,0)
-                  const pc=PLATFORMS.find(x=>x.name.toUpperCase()===p)?.color||C.neutral
-                  return (
-                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+        </div>
+      ))}
+
+      {/* ── MONTHLY FLOW VIEW ── */}
+      {view==="monthly" && (
+        <div style={{display:"flex",flexDirection:"column" as const,gap:16}}>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+            <div style={{color:C.white,fontWeight:700,marginBottom:4}}>Monthly Net Cash Flow</div>
+            {netFlow.length>0&&<BarChart data={netFlow.map((v,i)=>({label:(months[i]||"").substring(0,3),value:v}))} height={130}/>}
+          </div>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:C.positive}}/>
+              <span style={{color:C.white,fontWeight:700,fontSize:13}}>Cash IN — Platform Receipts</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11,minWidth:900}}>
+                <thead><tr style={{background:C.surfaceAlt}}>
+                  <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 12px",textAlign:"left" as const,letterSpacing:1,minWidth:110}}>PLATFORM</th>
+                  {months.map(m=><th key={m} style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{m}</th>)}
+                  <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const}}>TOTAL</th>
+                </tr></thead>
+                <tbody>
+                  {Object.entries(cashIn).map(([p,vals],i)=>{
+                    const total=vals.reduce((a,b)=>a+b,0)
+                    const pc=PLATFORMS.find(x=>x.name.toUpperCase()===p)?.color||C.neutral
+                    return (<tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
                       <td style={{padding:"8px 12px"}}><Badge color={pc}>{p}</Badge></td>
                       {vals.map((v,j)=><td key={j} style={{padding:"8px 10px",color:v>0?C.positive:C.dimText,textAlign:"right" as const}}>{v>0?fmt(v,true):"—"}</td>)}
                       <td style={{padding:"8px 10px",color:C.positive,fontWeight:700,textAlign:"right" as const}}>{fmt(total,true)}</td>
-                    </tr>
-                  )
-                })}
-                <tr style={{background:C.positiveDim}}>
-                  <td style={{padding:"9px 12px",color:C.positive,fontWeight:800}}>TOTAL IN</td>
-                  {totalIn.map((v,j)=><td key={j} style={{padding:"9px 10px",color:C.positive,fontWeight:700,textAlign:"right" as const}}>{fmt(v,true)}</td>)}
-                  <td style={{padding:"9px 10px",color:C.positive,fontWeight:800,textAlign:"right" as const}}>{fmt(totalIn.reduce((a,b)=>a+b,0),true)}</td>
-                </tr>
-              </tbody>
-            </table>
+                    </tr>)
+                  })}
+                  <tr style={{background:C.positiveDim}}>
+                    <td style={{padding:"9px 12px",color:C.positive,fontWeight:800}}>TOTAL IN</td>
+                    {totalIn.map((v,j)=><td key={j} style={{padding:"9px 10px",color:C.positive,fontWeight:700,textAlign:"right" as const}}>{fmt(v,true)}</td>)}
+                    <td style={{padding:"9px 10px",color:C.positive,fontWeight:800,textAlign:"right" as const}}>{fmt(totalIn.reduce((a,b)=>a+b,0),true)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-        {/* Cash OUT table */}
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:C.negative}}/>
-            <span style={{color:C.white,fontWeight:700,fontSize:13}}>Cash OUT — Expense Categories</span>
-          </div>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11,minWidth:900}}>
-              <thead><tr style={{background:C.surfaceAlt}}>
-                <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 12px",textAlign:"left" as const,minWidth:160}}>CATEGORY</th>
-                {months.map(m=><th key={m} style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{m}</th>)}
-                <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const}}>AVG/MTH</th>
-              </tr></thead>
-              <tbody>
-                {Object.entries(cashOut).map(([cat,vals],i)=>{
-                  const avg=vals.reduce((a,b)=>a+b,0)/(vals.length||1)
-                  return (
-                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:C.negative}}/>
+              <span style={{color:C.white,fontWeight:700,fontSize:13}}>Cash OUT — Expense Categories</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11,minWidth:900}}>
+                <thead><tr style={{background:C.surfaceAlt}}>
+                  <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 12px",textAlign:"left" as const,minWidth:160}}>CATEGORY</th>
+                  {months.map(m=><th key={m} style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{m}</th>)}
+                  <th style={{color:C.dimText,fontWeight:700,fontSize:9,padding:"8px 10px",textAlign:"right" as const}}>AVG/MTH</th>
+                </tr></thead>
+                <tbody>
+                  {Object.entries(cashOut).map(([cat,vals],i)=>{
+                    const avg=vals.reduce((a,b)=>a+b,0)/(vals.length||1)
+                    return (<tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
                       <td style={{padding:"8px 12px",color:C.neutral,fontSize:11}}>{cat}</td>
                       {vals.map((v,j)=><td key={j} style={{padding:"8px 10px",color:v<0?C.negative:C.dimText,textAlign:"right" as const}}>{v<0?fmt(-v,true):"—"}</td>)}
                       <td style={{padding:"8px 10px",color:C.negative,fontWeight:600,textAlign:"right" as const}}>{avg<0?fmt(-avg,true):"—"}</td>
-                    </tr>
-                  )
-                })}
-                <tr style={{background:C.negativeDim}}>
-                  <td style={{padding:"9px 12px",color:C.negative,fontWeight:800}}>TOTAL OUT</td>
-                  {totalOut.map((v,j)=><td key={j} style={{padding:"9px 10px",color:C.negative,fontWeight:700,textAlign:"right" as const}}>{fmt(-v,true)}</td>)}
-                  <td style={{padding:"9px 10px",color:C.negative,fontWeight:800,textAlign:"right" as const}}>{fmt(-totalOut.reduce((a,b)=>a+b,0)/(totalOut.length||1),true)}</td>
-                </tr>
-              </tbody>
-            </table>
+                    </tr>)
+                  })}
+                  <tr style={{background:C.negativeDim}}>
+                    <td style={{padding:"9px 12px",color:C.negative,fontWeight:800}}>TOTAL OUT</td>
+                    {totalOut.map((v,j)=><td key={j} style={{padding:"9px 10px",color:C.negative,fontWeight:700,textAlign:"right" as const}}>{fmt(-v,true)}</td>)}
+                    <td style={{padding:"9px 10px",color:C.negative,fontWeight:800,textAlign:"right" as const}}>{fmt(-totalOut.reduce((a,b)=>a+b,0)/(totalOut.length||1),true)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11,minWidth:900}}>
+                <tbody>
+                  <tr style={{background:C.surfaceAlt}}>
+                    <td style={{padding:"10px 12px",color:C.accent,fontWeight:800,fontSize:12,minWidth:160}}>NET CASH FLOW</td>
+                    {netFlow.map((v,j)=>(<td key={j} style={{padding:"10px 10px",color:v>=0?C.positive:C.negative,fontWeight:800,textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{v>=0?"+":""}{fmt(v,true)}</td>))}
+                    <td/>
+                  </tr>
+                  <tr>
+                    <td style={{padding:"8px 12px",color:C.dimText,fontSize:11}}>Status</td>
+                    {netFlow.map((v,j)=>(<td key={j} style={{padding:"8px 10px",textAlign:"right" as const}}><Badge color={v>=0?C.positive:v>-1000000?C.accent:C.negative}>{v>=0?"+":v>-1000000?"~":"−"}</Badge></td>))}
+                    <td/>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-        {/* Net row */}
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11,minWidth:900}}>
-              <tbody>
-                <tr style={{background:C.surfaceAlt}}>
-                  <td style={{padding:"10px 12px",color:C.accent,fontWeight:800,fontSize:12,minWidth:160}}>NET CASH FLOW</td>
-                  {netFlow.map((v,j)=>(
-                    <td key={j} style={{padding:"10px 10px",color:v>=0?C.positive:C.negative,fontWeight:800,textAlign:"right" as const,whiteSpace:"nowrap" as const}}>
-                      {v>=0?"+":""}{fmt(v,true)}
-                    </td>
-                  ))}
-                  <td/>
-                </tr>
-                <tr>
-                  <td style={{padding:"8px 12px",color:C.dimText,fontSize:11}}>Status</td>
-                  {netFlow.map((v,j)=>(
-                    <td key={j} style={{padding:"8px 10px",textAlign:"right" as const}}>
-                      <Badge color={v>=0?C.positive:v>-1000000?C.accent:C.negative}>{v>=0?"+":v>-1000000?"~":"−"}</Badge>
-                    </td>
-                  ))}
-                  <td/>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }
+
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function Home() {
