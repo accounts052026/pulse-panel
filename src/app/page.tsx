@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react"
 // ─── SHEET CONFIG ─────────────────────────────────────────────────────────────
 const SHEET_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQic7FAazD2oLAIGRxBT8QGyAbM9pChIruIhS8PtdtcBhuD8c9B0k0EbFG5_duCdkNksq_dxyRF8sM3/pub"
 const CF_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?output=csv"
-const WC_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?gid=1354185061&single=true&output=csv"
+const WC_URL      = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?gid=1354185061&single=true&output=csv"
+const BANK_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?gid=1112489118&single=true&output=csv"
 
 const PLATFORMS = [
   { name: "Blinkit",   gid: "34243415",   color: "#F5A623" },
@@ -918,13 +919,92 @@ function PLTab() {
 }
 
 // ─── CF TAB ───────────────────────────────────────────────────────────────────
-function CFTab({cfRows,wcRows}:{cfRows:string[][];wcRows:string[][]}) {
+function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];bankRows:string[][]}) {
   const [view,setView]=useState<"wc"|"monthly">("wc")
   const {months,cashIn,cashOut,netFlow}=extractCF(cfRows)
   const totalIn =months.map((_,i)=>Object.values(cashIn).reduce((s,a)=>s+(a[i]||0),0))
   const totalOut=months.map((_,i)=>Object.values(cashOut).reduce((s,a)=>s+(a[i]||0),0))
 
-  // ── WC PARSER ──
+  // ── BANK DATA PARSER — group by account_name, month-wise ──
+  const parseBankData = () => {
+    if(!bankRows||bankRows.length<2) return null
+
+    // Header: Month(0) Year(1) date(2) account_name(3) transaction_details(4) transaction_type(5) reference_number(6) entity_number(7) debit(8) credit(9) net_amount(10)
+    const header = bankRows[0]
+    const monthIdx = header.findIndex(h=>h?.toLowerCase()==="month")
+    const yearIdx  = header.findIndex(h=>h?.toLowerCase()==="year")
+    const accIdx   = header.findIndex(h=>h?.toLowerCase()==="account_name")
+    const txIdx    = header.findIndex(h=>h?.toLowerCase()==="transaction_type")
+    const netIdx   = header.findIndex(h=>h?.toLowerCase()==="net_amount")
+
+    if(accIdx===-1||netIdx===-1) return null
+
+    // Get all unique months sorted
+    const monthSet = new Set<string>()
+    for(let i=1;i<bankRows.length;i++){
+      const r=bankRows[i]
+      const m=r[monthIdx]?.trim(), y=r[yearIdx]?.trim()
+      if(m&&y&&!isNaN(Number(m))&&!isNaN(Number(y))) monthSet.add(`${y}-${m.padStart(2,"0")}`)
+    }
+    const sortedMonths = Array.from(monthSet).sort()
+    const MN=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    const mLabels = sortedMonths.map(ym=>{
+      const [y,m]=ym.split("-")
+      return `${MN[Number(m)]} ${String(y).slice(2)}`
+    })
+
+    // Group by account_name → month → sum net_amount
+    const groups: Record<string, Record<string,number>> = {}
+    const txTypes: Record<string,string> = {}
+
+    for(let i=1;i<bankRows.length;i++){
+      const r=bankRows[i]
+      const m=r[monthIdx]?.trim(), y=r[yearIdx]?.trim()
+      if(!m||!y||isNaN(Number(m))||isNaN(Number(y))) continue
+      const ym=`${y}-${m.padStart(2,"0")}`
+      const acc=r[accIdx]?.trim()||"Unknown"
+      const tx=r[txIdx]?.trim()||""
+      const val=n(r[netIdx]||"0")
+      if(!groups[acc]) groups[acc]={}
+      groups[acc][ym]=(groups[acc][ym]||0)+val
+      if(!txTypes[acc]) txTypes[acc]=tx
+    }
+
+    // Separate into cash out (expenses/vendor) and cash in (customer)
+    const cashInKeys   = Object.keys(groups).filter(k=>txTypes[k]==="customer_payment")
+    const cashOutKeys  = Object.keys(groups).filter(k=>txTypes[k]!=="customer_payment"&&txTypes[k]!=="transfer_fund")
+
+    // Build rows
+    interface BR{label:string;vals:number[];type:string;isHeader?:boolean;isTotal?:boolean}
+    const rows:BR[]=[]
+
+    // Cash OUT section
+    rows.push({label:"CASH OUT — Expenses & Vendor Payments",vals:sortedMonths.map(ym=>cashOutKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)),type:"OUT",isHeader:true})
+    cashOutKeys.sort((a,b)=>{
+      const ta=txTypes[a]||"", tb=txTypes[b]||""
+      return ta.localeCompare(tb)||a.localeCompare(b)
+    }).forEach(k=>{
+      rows.push({label:k,vals:sortedMonths.map(ym=>groups[k][ym]||0),type:txTypes[k]==="vendor_payment"?"VENDOR":"EXPENSE"})
+    })
+
+    // Cash IN section
+    rows.push({label:"CASH IN — Platform Receipts",vals:sortedMonths.map(ym=>cashInKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)),type:"IN",isHeader:true})
+    cashInKeys.sort().forEach(k=>{
+      rows.push({label:k,vals:sortedMonths.map(ym=>groups[k][ym]||0),type:"CUSTOMER"})
+    })
+
+    // Net row
+    const netVals=sortedMonths.map(ym=>{
+      const out=cashOutKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)
+      const inp=cashInKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)
+      return inp+out // out is already negative
+    })
+    rows.push({label:"NET CASH FLOW",vals:netVals,type:"NET",isTotal:true})
+
+    return {mLabels,sortedMonths,rows,netVals}
+  }
+
+  // ── WC PARSER (fallback) ──
   const parseWC = () => {
     if(!wcRows||wcRows.length<3) return null
     // Find year row (has 2025/2026) and month row (has 1-12)
@@ -976,7 +1056,8 @@ function CFTab({cfRows,wcRows}:{cfRows:string[][];wcRows:string[][]}) {
     return {mLabels,nCols,rows,netRow,cashBal}
   }
 
-  const wc=parseWC()
+  const bankData=parseBankData()
+  const wc=bankData||parseWC()
 
   return (
     <div>
@@ -1002,7 +1083,7 @@ function CFTab({cfRows,wcRows}:{cfRows:string[][];wcRows:string[][]}) {
       </div>
 
       {/* ── WORKING CAPITAL VIEW ── */}
-      {view==="wc" && (!wc ? (
+      {view==="wc" && (!bankData&&!wc ? (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:40,textAlign:"center" as const,color:C.dimText}}>
           Working capital data loading... Click Refresh if this persists.
         </div>
@@ -1163,6 +1244,7 @@ export default function Home() {
   const [platforms,setPlatforms] = useState<PlatformCalc[]>([])
   const [cfRows,setCfRows]     = useState<string[][]>([])
   const [wcRows,setWcRows]     = useState<string[][]>([])
+  const [bankRows,setBankRows] = useState<string[][]>([])
   const [loading,setLoading]   = useState(true)
   const [loadingMsg,setLoadingMsg] = useState("Fetching data...")
   const [error,setError]       = useState("")
@@ -1180,18 +1262,21 @@ export default function Home() {
           .then(t => extractPlatformData(parseCSV(t), p.name, p.color, from, to))
       )
       const cfFetch = fetch(`${CF_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
-      const wcFetch = fetch(`${WC_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
+      const wcFetch   = fetch(`${WC_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
+      const bankFetch = fetch(`${BANK_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
 
       setLoadingMsg(`Fetching ${PLATFORMS.length} platform tabs + cash flow...`)
-      const [...results] = await Promise.all([...platformFetches, cfFetch, wcFetch])
+      const [...results] = await Promise.all([...platformFetches, cfFetch, wcFetch, bankFetch])
 
       const pData = results.slice(0, PLATFORMS.length) as PlatformCalc[]
       const cf    = results[PLATFORMS.length] as string[][]
       const wc    = results[PLATFORMS.length + 1] as string[][]
+      const bank  = results[PLATFORMS.length + 2] as string[][]
 
       setPlatforms(pData)
       setCfRows(cf)
       setWcRows(wc)
+      setBankRows(bank)
       setLastRefresh(new Date())
     } catch(e:any) {
       setError("Sheet fetch failed — check publish settings or network.")
@@ -1254,7 +1339,7 @@ export default function Home() {
           <>
             {tab==="arap" && <ARAPTab platforms={platforms}/>}
             {tab==="pl"   && <PLTab/>}
-            {tab==="cf"   && <CFTab cfRows={cfRows} wcRows={wcRows}/>}
+            {tab==="cf"   && <CFTab cfRows={cfRows} wcRows={wcRows} bankRows={bankRows}/>}
           </>
         )}
       </div>
