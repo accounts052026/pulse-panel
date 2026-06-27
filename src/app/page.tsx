@@ -651,7 +651,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
 }
 
 
-// ─── P&L TAB (static from Zoho PDF) ─────────────────────────────────────────
+// ─── P&L TAB ──────────────────────────────────────────────────────────────────
 function PLTab() {
   const fy25={sales:61491809,discounts:-22489807,netSales:39340481,cogs:23244740,grossProfit:16095741,opex:43117089,ebitda:-27021347}
   const fy26={sales:100708456,discounts:-36667471,netSales:64297013,cogs:31743426,grossProfit:32553587,opex:73911815,ebitda:-41358228}
@@ -665,7 +665,16 @@ function PLTab() {
     {label:"Staff Welfare",fy25:204359,fy26:1194407},
     {label:"Technology",fy25:120472,fy26:324514},
   ]
-  const [view,setView]=useState<"annual"|"opex">("annual")
+  // Historical P&L FY21-FY26 (₹ Lakhs)
+  const hist = [
+    {fy:"FY21",income:2.35,  revOps:2.36,  expenses:10.24,empBen:3.60,otherExp:6.64, ebitda:-7.89},
+    {fy:"FY22",income:14.62, revOps:14.61, expenses:33.83,empBen:8.38,otherExp:29.05,ebitda:-32.53},
+    {fy:"FY23",income:40.67, revOps:40.67, expenses:141.64,empBen:26.81,otherExp:75.02,ebitda:-100.97},
+    {fy:"FY24",income:89.08, revOps:88.58, expenses:227.11,empBen:38.00,otherExp:144.70,ebitda:-138.03},
+    {fy:"FY25",income:394.86,revOps:390.02,expenses:744.81,empBen:82.82,otherExp:402.89,ebitda:-350.05},
+    {fy:"FY26",income:642.97,revOps:640.00,expenses:1073.00,empBen:146.83,otherExp:599.52,ebitda:-413.58},
+  ]
+  const [view,setView]=useState<"trend"|"annual"|"opex">("trend")
 
   return (
     <div>
@@ -679,9 +688,123 @@ function PLTab() {
         <span style={{color:C.accent,fontSize:11}}>ℹ P&L from Zoho Books provisional export — update when new monthly data available</span>
       </div>
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
-        <NavTab label="Annual Compare" active={view==="annual"} onClick={()=>setView("annual")}/>
+        <NavTab label="6-Year Trend" active={view==="trend"} onClick={()=>setView("trend")}/>
+        <NavTab label="FY25 vs FY26" active={view==="annual"} onClick={()=>setView("annual")}/>
         <NavTab label="OpEx Breakdown" active={view==="opex"} onClick={()=>setView("opex")}/>
       </div>
+
+      {/* ── 6-YEAR TREND ── */}
+      {view==="trend" && (
+        <div style={{display:"flex",flexDirection:"column" as const,gap:12}}>
+          {/* Insight cards */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+            {[
+              {icon:"📈",title:"Revenue CAGR",val:"178%",sub:"FY21→FY26 (5 years)",color:C.positive},
+              {icon:"🚀",title:"Revenue Growth",val:"27x",sub:"₹2.35L → ₹643L in 6 years",color:C.positive},
+              {icon:"📉",title:"EBITDA Loss",val:"52x",sub:"₹7.9L → ₹413L widening",color:C.negative},
+              {icon:"🎯",title:"Gross Margin FY26",val:"50.6%",sub:"Up from 40.9% in FY25",color:C.accent},
+            ].map((card,i)=>(
+              <div key={i} style={{background:C.surface,border:`1px solid ${card.color}33`,borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                <div style={{fontSize:18}}>{card.icon}</div>
+                <div>
+                  <div style={{color:card.color,fontWeight:800,fontSize:18}}>{card.val}</div>
+                  <div style={{color:C.white,fontWeight:600,fontSize:11,marginTop:1}}>{card.title}</div>
+                  <div style={{color:C.dimText,fontSize:10,marginTop:1}}>{card.sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Bar chart */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{color:C.white,fontWeight:700,fontSize:13}}>Revenue vs EBITDA Loss — FY21 to FY26</div>
+                <div style={{color:C.dimText,fontSize:10,marginTop:2}}>All figures in ₹ Lakhs</div>
+              </div>
+              <div style={{display:"flex",gap:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:2,background:C.positive}}/><span style={{color:C.dimText,fontSize:9}}>Revenue</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:2,background:C.negative+"88"}}/><span style={{color:C.dimText,fontSize:9}}>EBITDA Loss</span></div>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:6,height:180}}>
+              {hist.map((d,i)=>{
+                const maxR=Math.max(...hist.map(x=>x.income))
+                const maxE=Math.max(...hist.map(x=>Math.abs(x.ebitda)))
+                const rH=Math.max((d.income/maxR)*140,3)
+                const eH=Math.max((Math.abs(d.ebitda)/maxE)*80,3)
+                const isCurrent=d.fy==="FY26"
+                return (
+                  <div key={i} style={{flex:1,display:"flex",flexDirection:"column" as const,alignItems:"center",gap:0}}>
+                    <div style={{color:C.positive,fontSize:isCurrent?10:8,fontWeight:isCurrent?800:500,marginBottom:3}}>{d.income>=100?`₹${(d.income).toFixed(0)}L`:`₹${d.income}L`}</div>
+                    <div style={{width:"60%",background:isCurrent?C.positive:`${C.positive}99`,height:`${rH}px`,borderRadius:"4px 4px 0 0"}}/>
+                    <div style={{width:"40%",background:isCurrent?C.negative:`${C.negative}66`,height:`${eH}px`,borderRadius:"0 0 3px 3px"}}/>
+                    <div style={{color:isCurrent?C.accent:C.neutral,fontSize:10,fontWeight:isCurrent?800:500,marginTop:4}}>{d.fy}</div>
+                    <div style={{color:C.negative,fontSize:8,marginTop:1}}>-{Math.abs(d.ebitda).toFixed(0)}L</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Historical table — columns = FY, rows = metrics */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt}}>
+              <span style={{color:C.white,fontWeight:700,fontSize:13}}>P&L Summary FY21–FY26</span>
+              <span style={{color:C.dimText,fontSize:10,marginLeft:8}}>(₹ Lakhs)</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                <thead>
+                  <tr style={{background:C.surfaceAlt}}>
+                    <th style={{padding:"8px 14px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,letterSpacing:1,position:"sticky" as const,left:0,background:C.surfaceAlt,borderRight:`1px solid ${C.border}`,minWidth:140}}>METRIC</th>
+                    {hist.map(d=>(
+                      <th key={d.fy} style={{padding:"8px 14px",textAlign:"right" as const,color:d.fy==="FY26"?C.accent:C.dimText,fontWeight:d.fy==="FY26"?800:600,fontSize:d.fy==="FY26"?12:10,minWidth:70,borderLeft:`1px solid ${C.border}`,background:d.fy==="FY26"?C.accentDim:"transparent"}}>
+                        {d.fy}{d.fy==="FY26"?" ✦":""}
+                      </th>
+                    ))}
+                    <th style={{padding:"8px 14px",textAlign:"right" as const,color:C.accent,fontWeight:700,fontSize:9,borderLeft:`2px solid ${C.accent}44`,minWidth:60}}>CAGR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {label:"Total Income",   key:"income",   color:C.white,   bold:true,  isPos:true},
+                    {label:"Revenue Ops",    key:"revOps",   color:C.neutral, bold:false, isPos:true},
+                    {label:"Total Expenses", key:"expenses", color:C.negative,bold:true,  isPos:false},
+                    {label:"Employee Cost",  key:"empBen",   color:C.neutral, bold:false, isPos:false},
+                    {label:"Other Expenses", key:"otherExp", color:C.neutral, bold:false, isPos:false},
+                    {label:"EBITDA",         key:"ebitda",   color:C.negative,bold:true,  isPos:false,final:true},
+                  ].map((row:any,i)=>{
+                    const vals=hist.map(d=>(d as any)[row.key] as number)
+                    const cagr=vals[0]&&Math.abs(vals[0])>0?(((Math.abs(vals[5])/Math.abs(vals[0]))**(1/5))-1)*100:null
+                    return (
+                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:row.final?C.negativeDim:"transparent"}}>
+                        <td style={{padding:"7px 14px",color:row.final?C.negative:row.bold?C.white:C.neutral,fontWeight:row.bold?700:400,position:"sticky" as const,left:0,background:row.final?C.negativeDim:C.bg,borderRight:`1px solid ${C.border}`,whiteSpace:"nowrap" as const,fontSize:row.final?12:11}}>{row.label}</td>
+                        {vals.map((v,j)=>{
+                          const prev=j>0?vals[j-1]:null
+                          const grew=prev!==null&&Math.abs(v)>Math.abs(prev)
+                          const isCurr=hist[j].fy==="FY26"
+                          return (
+                            <td key={j} style={{padding:"7px 14px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,color:isCurr?(row.isPos?C.positive:C.negative):row.color,fontWeight:isCurr?700:row.bold?600:400,background:isCurr?C.accentDim+"66":"transparent",fontSize:isCurr?12:10}}>
+                              {Math.abs(v)<0.01?"—":Math.abs(v).toFixed(1)}
+                              {j>0&&v!==0&&<span style={{color:grew?(row.isPos?C.positive+"77":C.negative+"77"):(row.isPos?C.negative+"77":C.positive+"77"),fontSize:8,marginLeft:2}}>{grew?"↑":"↓"}</span>}
+                            </td>
+                          )
+                        })}
+                        <td style={{padding:"7px 14px",textAlign:"right" as const,borderLeft:`2px solid ${C.accent}44`,color:C.accent,fontWeight:700,fontSize:11}}>
+                          {cagr!==null?`${Math.abs(cagr).toFixed(0)}%`:"—"}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FY25 vs FY26 ── */}
       {view==="annual" && (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
           {([["FY 2024-25",fy25],["FY 2025-26",fy26]] as const).map(([label,d]:any,idx)=>(
@@ -689,12 +812,12 @@ function PLTab() {
               <div style={{color:idx===1?C.accent:C.neutral,fontWeight:800,fontSize:14,marginBottom:16}}>{label}</div>
               {[
                 {label:"Gross Sales",val:d.sales,color:C.white,bold:true},
-                {label:"Discounts & Trade",val:d.discounts,color:C.negative},
+                {label:"(-) Discounts & Trade",val:d.discounts,color:C.negative},
                 {label:"Net Revenue",val:d.netSales,color:C.white,bold:true},
-                {label:"Cost of Goods Sold",val:-d.cogs,color:C.negative},
+                {label:"(-) Cost of Goods Sold",val:-d.cogs,color:C.negative},
                 {label:"Gross Profit",val:d.grossProfit,color:C.positive,bold:true},
                 {label:"Gross Margin %",val:pct(d.grossProfit,d.netSales),color:C.accent,isStr:true},
-                {label:"Operating Expenses",val:-d.opex,color:C.negative},
+                {label:"(-) Operating Expenses",val:-d.opex,color:C.negative},
                 {label:"EBITDA",val:d.ebitda,color:d.ebitda>=0?C.positive:C.negative,bold:true},
               ].map((r:any,j)=>(
                 <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}22`}}>
@@ -706,6 +829,8 @@ function PLTab() {
           ))}
         </div>
       )}
+
+      {/* ── OPEX ── */}
       {view==="opex" && (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
           <div style={{color:C.white,fontWeight:700,marginBottom:16}}>OpEx Breakdown — FY25 vs FY26</div>
