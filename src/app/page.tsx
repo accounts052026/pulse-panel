@@ -1147,14 +1147,23 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
       if(txType==="transfer_fund") continue
 
       // Resolve via master:
-      // customer_payment → account_name = actual customer entity
-      // vendor_payment   → transaction_details = actual vendor name (account_name is just "HDFC A/c - 6379")
-      // expense          → transaction_details = expense category
+      // customer_payment → account_name = actual customer entity (Moonstone, PJTJ etc.)
+      // vendor_payment   → transaction_details = actual vendor name
+      // expense          → transaction_details = expense category name
       const lookupKey = txType==="customer_payment" ? acc : det
       const info = getVendorInfo(lookupKey)
-      const key = info.canonical
+      // For customers: if not in master, show raw account name (don't lose any entity)
+      const key = (txType==="customer_payment" && info.category!=="PLATFORM IN")
+        ? acc  // unmapped customer — use raw name, still show it
+        : info.canonical
 
-      if(!entries[key]) entries[key]={vals:{},txType,canonical:info.canonical,category:info.category||"OTHER",critical:info.critical}
+      const entryCategory = (txType==="customer_payment" && info.category!=="PLATFORM IN")
+        ? "PLATFORM IN"  // force all customer payments into PLATFORM IN
+        : (info.category||"OTHER")
+      const entryCanonical = (txType==="customer_payment" && info.category!=="PLATFORM IN")
+        ? acc  // use raw name for unmapped customers
+        : info.canonical
+      if(!entries[key]) entries[key]={vals:{},txType,canonical:entryCanonical,category:entryCategory,critical:info.critical}
       entries[key].vals[ym]=(entries[key].vals[ym]||0)+val
     }
 
