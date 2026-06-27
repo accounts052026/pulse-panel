@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 // ─── SHEET CONFIG ─────────────────────────────────────────────────────────────
 const SHEET_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQic7FAazD2oLAIGRxBT8QGyAbM9pChIruIhS8PtdtcBhuD8c9B0k0EbFG5_duCdkNksq_dxyRF8sM3/pub"
 const CF_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?output=csv"
+const WC_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?gid=1354185061&single=true&output=csv"
 
 const PLATFORMS = [
   { name: "Blinkit",   gid: "34243415",   color: "#F5A623" },
@@ -917,8 +918,8 @@ function PLTab() {
 }
 
 // ─── CF TAB ───────────────────────────────────────────────────────────────────
-function CFTab({cfRows}:{cfRows:string[][]}) {
-  const [view,setView]=useState<"monthly"|"vendors">("monthly")
+function CFTab({cfRows,wcRows}:{cfRows:string[][];wcRows:string[][]}) {
+  const [view,setView]=useState<"wc"|"monthly"|"vendors">("wc")
   const {months,cashIn,cashOut,netFlow}=extractCF(cfRows)
   const totalIn =months.map((_,i)=>Object.values(cashIn).reduce((s,a)=>s+(a[i]||0),0))
   const totalOut=months.map((_,i)=>Object.values(cashOut).reduce((s,a)=>s+(a[i]||0),0))
@@ -930,6 +931,7 @@ function CFTab({cfRows}:{cfRows:string[][]}) {
         <KpiCard label="Avg Monthly Cash Out" value={fmt(totalOut.length?Math.abs(totalOut.reduce((a,b)=>a+b,0)/totalOut.length):0,true)} sub="All expenses avg" color={C.negative}/>
       </div>
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
+        <NavTab label="Working Capital" active={view==="wc"} onClick={()=>setView("wc")}/>
         <NavTab label="Monthly Flow" active={view==="monthly"} onClick={()=>setView("monthly")}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -1041,6 +1043,7 @@ export default function Home() {
   const [tab,setTab]           = useState<"arap"|"pl"|"cf">("arap")
   const [platforms,setPlatforms] = useState<PlatformCalc[]>([])
   const [cfRows,setCfRows]     = useState<string[][]>([])
+  const [wcRows,setWcRows]     = useState<string[][]>([])
   const [loading,setLoading]   = useState(true)
   const [loadingMsg,setLoadingMsg] = useState("Fetching data...")
   const [error,setError]       = useState("")
@@ -1058,15 +1061,18 @@ export default function Home() {
           .then(t => extractPlatformData(parseCSV(t), p.name, p.color, from, to))
       )
       const cfFetch = fetch(`${CF_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
+      const wcFetch = fetch(`${WC_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
 
       setLoadingMsg(`Fetching ${PLATFORMS.length} platform tabs + cash flow...`)
-      const [...results] = await Promise.all([...platformFetches, cfFetch])
+      const [...results] = await Promise.all([...platformFetches, cfFetch, wcFetch])
 
       const pData = results.slice(0, PLATFORMS.length) as PlatformCalc[]
       const cf    = results[PLATFORMS.length] as string[][]
+      const wc    = results[PLATFORMS.length + 1] as string[][]
 
       setPlatforms(pData)
       setCfRows(cf)
+      setWcRows(wc)
       setLastRefresh(new Date())
     } catch(e:any) {
       setError("Sheet fetch failed — check publish settings or network.")
@@ -1129,7 +1135,7 @@ export default function Home() {
           <>
             {tab==="arap" && <ARAPTab platforms={platforms}/>}
             {tab==="pl"   && <PLTab/>}
-            {tab==="cf"   && <CFTab cfRows={cfRows}/>}
+            {tab==="cf"   && <CFTab cfRows={cfRows} wcRows={wcRows}/>}
           </>
         )}
       </div>
