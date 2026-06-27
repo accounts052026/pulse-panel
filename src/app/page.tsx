@@ -249,6 +249,31 @@ function fmt(v: number, compact=false): string {
 }
 function pct(a:number,b:number) { return b ? `${((a/b)*100).toFixed(1)}%` : "—" }
 
+
+// ─── PLATFORM LOGOS ───────────────────────────────────────────────────────────
+const LOGOS: Record<string, string> = {
+  Blinkit:   "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Blinkit-yellow-app-icon.svg/1200px-Blinkit-yellow-app-icon.svg.png",
+  Swiggy:    "https://upload.wikimedia.org/wikipedia/en/thumb/1/12/Swiggy_logo.svg/1200px-Swiggy_logo.svg.png",
+  Zepto:     "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Zepto_logo.svg/1200px-Zepto_logo.svg.png",
+  Amazon:    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/2560px-Amazon_logo.svg.png",
+  BigBasket: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Bigbasket_logo.svg/1200px-Bigbasket_logo.svg.png",
+  FirstClub: "https://media.licdn.com/dms/image/v2/D560BAQHLtIInAE5Y7A/company-logo_200_200/company-logo_200_200/0/1707754342849/firstclub_logo?e=2147483647&v=beta&t=WL0pJOuKGToagbhd_Z7JkqNKZqEwqW-JjzpXM7o-yY0",
+  LeMarche:  "https://lemarche.eu/wp-content/uploads/2023/03/Logo-LeMarche.png",
+  GoGlocal:  "https://goglocal.live/static/media/goglocal-logo.d9e0c5b0.png",
+}
+
+function PlatformLogo({ name, size = 20 }: { name: string; size?: number }) {
+  const src = LOGOS[name]
+  const bg = PLATFORMS.find(p => p.name === name)?.color || "#94A3B8"
+  if (!src) return <div style={{ width: size, height: size, borderRadius: 6, background: bg + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.5, fontWeight: 800, color: bg }}>{name[0]}</div>
+  return (
+    <div style={{ width: size, height: size, borderRadius: 6, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+      <img src={src} alt={name} style={{ width: "90%", height: "90%", objectFit: "contain" }}
+        onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+    </div>
+  )
+}
+
 // ─── MICRO UI ─────────────────────────────────────────────────────────────────
 function Badge({children,color}:{children:React.ReactNode;color:string}) {
   return <span style={{background:color+"22",color,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,letterSpacing:1,textTransform:"uppercase" as const,whiteSpace:"nowrap" as const}}>{children}</span>
@@ -321,6 +346,17 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
         <KpiCard label="Brand Funded Disc" value={fmt(Math.abs(totBFD),true)} sub="Total BFD setoff" color={C.neutral}/>
       </div>
 
+      {/* Platform logo strip */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+        {platforms.map((p,i)=>(
+          <div key={i} title={p.name} style={{display:"flex",alignItems:"center",gap:6,background:C.surface,border:`1px solid ${p.net>=0?p.color+"44":C.border}`,borderRadius:8,padding:"5px 10px"}}>
+            <PlatformLogo name={p.name} size={18}/>
+            <span style={{color:p.color,fontSize:11,fontWeight:700}}>{p.name}</span>
+            <span style={{color:p.net>=0?C.positive:C.negative,fontSize:11,fontWeight:800}}>{p.net>=0?"+":""}{(p.net/100000).toFixed(1)}L</span>
+          </div>
+        ))}
+      </div>
+
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
         {(["waterfall","platforms","aging"] as const).map(v=>(
           <NavTab key={v} label={v==="waterfall"?"Waterfall":v==="platforms"?"By Platform":"AR Aging"} active={view===v} onClick={()=>setView(v)}/>
@@ -359,7 +395,8 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
             <button onClick={()=>setSelP(null)} style={{background:selP===null?C.accent:"transparent",color:selP===null?"#0B0F1A":C.neutral,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600}}>All</button>
             {platforms.map(p=>(
-              <button key={p.name} onClick={()=>setSelP(p.name===selP?null:p.name)} style={{background:selP===p.name?p.color+"33":"transparent",color:selP===p.name?p.color:C.neutral,border:`1px solid ${selP===p.name?p.color:C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600}}>{p.name}</button>
+              <button key={p.name} onClick={()=>setSelP(p.name===selP?null:p.name)} style={{background:selP===p.name?p.color+"33":"transparent",color:selP===p.name?p.color:C.neutral,border:`1px solid ${selP===p.name?p.color:C.border}`,borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+                <PlatformLogo name={p.name} size={16}/>{p.name}</button>
             ))}
           </div>
 
@@ -367,7 +404,10 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
             // Single platform waterfall
             <div style={{background:C.surface,border:`1px solid ${selData.color}`,borderRadius:12,overflow:"hidden"}}>
               <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,background:selData.color+"11",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{color:selData.color,fontWeight:800,fontSize:16}}>{selData.name}</span>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <PlatformLogo name={selData.name} size={28}/>
+                  <span style={{color:selData.color,fontWeight:800,fontSize:16}}>{selData.name}</span>
+                </div>
                 <Badge color={selData.net>=0?C.positive:C.negative}>{selData.net>=0?"NET +VE":"NET −VE"}</Badge>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",padding:"8px 16px",background:C.surfaceAlt,borderBottom:`1px solid ${C.border}`}}>
@@ -404,7 +444,10 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
               {platforms.map((p,i)=>(
                 <div key={i} onClick={()=>setSelP(p.name)} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18,borderLeft:`3px solid ${p.color}`,cursor:"pointer",transition:"border-color 0.15s"}} onMouseEnter={e=>(e.currentTarget.style.borderColor=p.color)} onMouseLeave={e=>(e.currentTarget.style.borderColor=C.border)}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <PlatformLogo name={p.name} size={24}/>
                     <div style={{color:p.color,fontWeight:800,fontSize:15}}>{p.name}</div>
+                  </div>
                     <Badge color={p.net>=0?C.positive:C.negative}>{p.net>=0?"NET +VE":"NET −VE"}</Badge>
                   </div>
                   {[
