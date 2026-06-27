@@ -18,18 +18,18 @@ const PLATFORMS = [
 
 // ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
 const C = {
-  bg:          "#0B0F1A",
-  surface:     "#131929",
-  surfaceAlt:  "#1A2236",
-  border:      "#222E45",
-  accent:      "#F5A623",
-  accentDim:   "#F5A62322",
-  positive:    "#22C55E",
-  positiveDim: "#22C55E18",
-  negative:    "#EF4444",
-  negativeDim: "#EF444418",
-  neutral:     "#94A3B8",
-  white:       "#F1F5F9",
+  bg:          "#F5F7FA",
+  surface:     "#FFFFFF",
+  surfaceAlt:  "#F0F2F6",
+  border:      "#E2E8F0",
+  accent:      "#E07B00",
+  accentDim:   "#F5A62318",
+  positive:    "#16A34A",
+  positiveDim: "#16A34A12",
+  negative:    "#DC2626",
+  negativeDim: "#DC262610",
+  neutral:     "#475569",
+  white:       "#0F172A",
   dimText:     "#64748B",
 }
 
@@ -1080,7 +1080,7 @@ export default function Home() {
   return (
     <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Inter',-apple-system,sans-serif",color:C.white}}>
       {/* Header */}
-      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"14px 20px",position:"sticky",top:0,zIndex:100}}>
+      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"14px 20px",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 8px rgba(0,0,0,0.08)"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div style={{width:32,height:32,background:C.accent,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🍛</div>
@@ -1134,7 +1134,7 @@ export default function Home() {
         )}
       </div>
 
-      <div style={{borderTop:`1px solid ${C.border}`,padding:"12px 20px",textAlign:"center" as const}}>
+      <div style={{borderTop:`1px solid ${C.border}`,padding:"12px 20px",textAlign:"center" as const,background:C.surfaceAlt}}>
         <span style={{color:C.dimText,fontSize:10,letterSpacing:1}}>LIVE · {PLATFORMS.length} PLATFORM TABS · GOOGLE SHEETS · REFRESH ON LOAD</span>
       </div>
     </div>
