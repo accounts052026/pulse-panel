@@ -125,6 +125,21 @@ const VENDOR_MASTER: Record<string, VendorMaster> = {
   "Electricity expenses":               {canonical:"Electricity",            category:"UTILITIES",   critical:"CRITICAL",  note:"Cannot stop"},
   "Water Expense":                      {canonical:"Water",                  category:"UTILITIES",   critical:"CRITICAL",  note:"Cannot stop"},
 
+  // ── CAPEX / ONE-TIME ──
+  "DUCTOFAB":                           {canonical:"Ductofab (Construction)",    category:"CAPEX",       critical:"ONE-TIME",  note:"One-time construction only"},
+  "SHREE GANESH STEEL":                 {canonical:"Shree Ganesh (Steel)",       category:"CAPEX",       critical:"ONE-TIME",  note:"One-time only"},
+  "NK IMPEX":                           {canonical:"NK Impex (Packing Material)",category:"CAPEX",       critical:"ONE-TIME",  note:"One-time packing material"},
+  "TRUMAX ENGINEERS":                   {canonical:"Trumax (Machinery)",          category:"CAPEX",       critical:"ONE-TIME",  note:"Machinery — not often"},
+  "ABSOLUTE RG EQUIPMENT":              {canonical:"Absolute RG (Machine Parts)",category:"CAPEX",       critical:"ONE-TIME",  note:"Spare parts — not often"},
+
+  // ── CONSULTANTS (one-time/rare) ──
+  "POOJA PAWA":                         {canonical:"Pooja Pawa (Consultant)",    category:"PROFESSIONAL",critical:"ONE-TIME",  note:"One-time consultant"},
+  "Megha":                              {canonical:"Megha (Mktg Consultant)",    category:"MARKETING",   critical:"ONE-TIME",  note:"One-time marketing consultant"},
+  "VANDANA":                            {canonical:"Vandana (Mktg — Optional)",  category:"MARKETING",   critical:"LOW",       note:"Marketing — skip in crunch"},
+  "Blue Bell":                          {canonical:"Blue Bell (Travel Agency)",  category:"ADMIN",       critical:"LOW",       note:"Travel booking — skip in crunch"},
+  "Equinox":                            {canonical:"Equinox (FSSAI Testing)",    category:"PROFESSIONAL",critical:"MEDIUM",    note:"Food testing — needed for NPD"},
+  "NAVEEN GENERAL STORE_old":           {canonical:"Naveen General Store",       category:"RAW MATERIAL",critical:"CRITICAL",  note:"Masala & spices"},
+  
   // ── OTHER ──
   "Admin Expenses":                     {canonical:"Admin Expenses",         category:"ADMIN",       critical:"LOW",       note:"Misc admin"},
   "Office expenses":                    {canonical:"Office Expenses",        category:"ADMIN",       critical:"LOW",       note:"Office misc"},
@@ -133,6 +148,19 @@ const VENDOR_MASTER: Record<string, VendorMaster> = {
   "Other Expenses":                     {canonical:"Other Expenses",         category:"ADMIN",       critical:"LOW",       note:"Miscellaneous"},
   "Bank Fees and Charges":              {canonical:"Bank Charges",           category:"ADMIN",       critical:"CRITICAL",  note:"Bank fees"},
   "Tour & Travel - Foreign & Domestic": {canonical:"Travel",                 category:"ADMIN",       critical:"LOW",       note:"Can reduce"},
+  "Mishita Enterprises":                {canonical:"Mishita (Band)",         category:"LOGISTICS",   critical:"BAND",      note:"Internal logistics — discontinued"},
+  "UNI OVERSEAS":                       {canonical:"Uni Overseas (Vendor)",  category:"PACKAGING",   critical:"LOW",       note:"Occasional vendor"},
+  "Nischal Naidu Kandula Reimbursement":{canonical:"Ads Reimbursement",      category:"MARKETING",   critical:"MEDIUM",    note:"Ads reimbursement"},
+  "Food Testing Expense":               {canonical:"Food Testing (FSSAI)",   category:"PROFESSIONAL",critical:"MEDIUM",    note:"FSSAI/NPD testing"},
+  "Kitchen Supplies":                   {canonical:"Kitchen Supplies",       category:"RAW MATERIAL",critical:"MEDIUM",    note:"Kitchen ops"},
+  "Factory Supplies":                   {canonical:"Factory Supplies",       category:"RAW MATERIAL",critical:"MEDIUM",    note:"Factory consumables"},
+  "Packing and Printing Expenses - Secondary":{canonical:"Secondary Packaging",category:"PACKAGING",  critical:"CRITICAL",  note:"Secondary packaging"},
+  "Civil and Maintenance":              {canonical:"Civil Work",             category:"CAPEX",       critical:"ONE-TIME",  note:"Construction/civil"},
+  "Printing and Stationery":            {canonical:"Printing & Stationery",  category:"ADMIN",       critical:"LOW",       note:"Office stationery"},
+  "Commission-F":                       {canonical:"Commission",             category:"ADMIN",       critical:"LOW",       note:"Commission payments"},
+  "GST Expense":                        {canonical:"GST Expense",            category:"ADMIN",       critical:"CRITICAL",  note:"GST payments"},
+  "Telephone Expense":                  {canonical:"Telephone/WiFi",         category:"UTILITIES",   critical:"MEDIUM",    note:"Internet & phone"},
+  "IT and Internet Expenses":           {canonical:"Software & IT",          category:"PROFESSIONAL",critical:"MEDIUM",    note:"IT tools"},
 
   // ── PLATFORM RECEIPTS (CASH IN) ──
   "Moonstone Ventures LLP":             {canonical:"Blinkit",                category:"PLATFORM IN", critical:"CRITICAL",  note:"Blinkit entity 1"},
@@ -161,15 +189,20 @@ const VENDOR_MASTER: Record<string, VendorMaster> = {
 const CATEGORY_ORDER = [
   "SALARIES","RAW MATERIAL","PACKAGING","RETORT","LOGISTICS",
   "MARKETING","RENT","INSURANCE","LOAN","UTILITIES",
-  "R&M","PROFESSIONAL","ADMIN","MACHINERY","PLATFORM IN"
+  "R&M","PROFESSIONAL","ADMIN","CAPEX","OTHER","MACHINERY","PLATFORM IN"
 ]
 
 const CRITICAL_COLOR: Record<Criticality, string> = {
-  "CRITICAL":  "#DC2626",
-  "MEDIUM":    "#D97706",
-  "LOW":       "#64748B",
-  "ONE-TIME":  "#8B5CF6",
-  "BAND":      "#94A3B8",
+  "CRITICAL":  "#DC2626",   // Cannot stop — red
+  "MEDIUM":    "#D97706",   // Important but can reduce — amber
+  "LOW":       "#64748B",   // Can stop in crunch — grey
+  "ONE-TIME":  "#8B5CF6",   // One-time payment — purple
+  "BAND":      "#94A3B8",   // Already stopped — light grey
+}
+
+const CRITICAL_LABEL: Record<Criticality, string> = {
+  "CRITICAL": "Must Pay", "MEDIUM": "Important", "LOW": "Optional",
+  "ONE-TIME": "One-Time", "BAND": "Closed",
 }
 
 function getVendorInfo(name: string): VendorMaster {
@@ -1323,7 +1356,7 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                             </span>
                             {indent>0&&row.critical&&row.critical!=="CRITICAL"&&(
                               <span style={{fontSize:8,padding:"1px 5px",borderRadius:3,background:CRITICAL_COLOR[row.critical as Criticality]+"22",color:CRITICAL_COLOR[row.critical as Criticality],fontWeight:700,letterSpacing:0.5}}>
-                                {row.critical==="BAND"?"BAND":row.critical==="ONE-TIME"?"1x":row.critical}
+                                {CRITICAL_LABEL[row.critical as Criticality]||row.critical}
                               </span>
                             )}
                           </div>
