@@ -324,46 +324,49 @@ function BarChart({data,height=100}:{data:{label:string;value:number}[];height?:
 
 // ─── AR/AP TAB ────────────────────────────────────────────────────────────────
 function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
-  const [view,setView] = useState<"waterfall"|"platforms"|"aging">("waterfall")
+  const [view,setView] = useState<"summary"|"waterfall"|"platform_detail">("summary")
   const [selP,setSelP] = useState<string|null>(null)
 
   const totAR4 = platforms.reduce((s,p)=>s+p.ar4,0)
   const totAP4 = platforms.reduce((s,p)=>s+p.ap4,0)
   const totNet = totAR4+totAP4
-  const totBFD = platforms.reduce((s,p)=>s+p.bfd,0)
   const totInv = platforms.reduce((s,p)=>s+p.invoice,0)
+  const totBFD = platforms.reduce((s,p)=>s+p.bfd,0)
+  const totPlatCost = platforms.reduce((s,p)=>s+p.apInvoice,0)
 
-  // Build waterfall from platform totals
   const wf = [
-    {label:"INVOICE",          ar:platforms.reduce((s,p)=>s+p.invoice,0),   ap:platforms.reduce((s,p)=>s+p.apInvoice,0)},
-    {label:"RETURNS",          ar:platforms.reduce((s,p)=>s+p.returns,0),   ap:null},
-    {label:"NET SALES",        ar:platforms.reduce((s,p)=>s+p.netSales,0),  ap:null, divider:true},
-    {label:"PAYMENT",          ar:platforms.reduce((s,p)=>s+p.payment,0),   ap:platforms.reduce((s,p)=>s+p.apPayment,0)},
-    {label:"AR1 / AP1",        ar:platforms.reduce((s,p)=>s+p.ar1,0),       ap:platforms.reduce((s,p)=>s+p.ap1,0), highlight:true},
-    {label:"TDS",              ar:platforms.reduce((s,p)=>s+p.tds,0),       ap:platforms.reduce((s,p)=>s+p.tdsDed,0)},
-    {label:"AR2 / AP2",        ar:platforms.reduce((s,p)=>s+p.ar2,0),       ap:platforms.reduce((s,p)=>s+p.ap2,0), highlight:true},
-    {label:"BRAND FUNDED DISC",ar:platforms.reduce((s,p)=>s+p.bfd,0),       ap:platforms.reduce((s,p)=>s+p.debitNote,0)},
-    {label:"AR3 / AP3",        ar:platforms.reduce((s,p)=>s+p.ar3,0),       ap:platforms.reduce((s,p)=>s+p.ap3,0), highlight:true},
-    {label:"AR/AP ADJUSTMENTS",ar:platforms.reduce((s,p)=>s+p.adjustments,0),ap:platforms.reduce((s,p)=>s+p.apAdj,0)},
-    {label:"AR4 / AP4 (FINAL)",ar:totAR4, ap:totAP4, highlight:true, final:true},
+    {label:"INVOICE",           ar:platforms.reduce((s,p)=>s+p.invoice,0),    ap:platforms.reduce((s,p)=>s+p.apInvoice,0)},
+    {label:"RETURNS",           ar:platforms.reduce((s,p)=>s+p.returns,0),    ap:null},
+    {label:"NET SALES",         ar:platforms.reduce((s,p)=>s+p.netSales,0),   ap:null, divider:true},
+    {label:"PAYMENT RECEIVED",  ar:platforms.reduce((s,p)=>s+p.payment,0),    ap:platforms.reduce((s,p)=>s+p.apPayment,0)},
+    {label:"AR1 / AP1",         ar:platforms.reduce((s,p)=>s+p.ar1,0),        ap:platforms.reduce((s,p)=>s+p.ap1,0), highlight:true},
+    {label:"TDS",               ar:platforms.reduce((s,p)=>s+p.tds,0),        ap:platforms.reduce((s,p)=>s+p.tdsDed,0)},
+    {label:"AR2 / AP2",         ar:platforms.reduce((s,p)=>s+p.ar2,0),        ap:platforms.reduce((s,p)=>s+p.ap2,0), highlight:true},
+    {label:"BRAND FUNDED DISC", ar:platforms.reduce((s,p)=>s+p.bfd,0),        ap:platforms.reduce((s,p)=>s+p.debitNote,0)},
+    {label:"AR3 / AP3",         ar:platforms.reduce((s,p)=>s+p.ar3,0),        ap:platforms.reduce((s,p)=>s+p.ap3,0), highlight:true},
+    {label:"AR/AP ADJUSTMENTS", ar:platforms.reduce((s,p)=>s+p.adjustments,0),ap:platforms.reduce((s,p)=>s+p.apAdj,0)},
+    {label:"AR4 / AP4 (FINAL)", ar:totAR4, ap:totAP4, highlight:true, final:true},
   ]
-
-  const selData = selP ? platforms.find(p=>p.name===selP) : null
 
   return (
     <div>
+      {/* KPI Strip */}
       <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
-        <KpiCard label="AR4 — Total Receivable" value={fmt(totAR4,true)} sub="After BFD & adjustments" color={C.positive}/>
-        <KpiCard label="AP4 — Total Payable" value={fmt(Math.abs(totAP4),true)} sub="Platform fees & charges" color={C.negative}/>
+        <KpiCard label="AR4 — Net Receivable" value={fmt(totAR4,true)} sub="After BFD & adjustments" color={C.positive}/>
+        <KpiCard label="Platform Costs (AP)" value={fmt(Math.abs(totPlatCost),true)} sub="Invoiced by platforms" color={C.negative}/>
         <KpiCard label="Net Position" value={fmt(totNet,true)} sub="AR4 − AP4" color={totNet>=0?C.positive:C.negative}/>
-        <KpiCard label="Total Invoice" value={fmt(totInv,true)} sub="Gross invoiced across platforms" color={C.accent}/>
-        <KpiCard label="Brand Funded Disc" value={fmt(Math.abs(totBFD),true)} sub="Total BFD setoff" color={C.neutral}/>
+        <KpiCard label="Gross Invoice" value={fmt(totInv,true)} sub="Total invoiced to platforms" color={C.accent}/>
+        <KpiCard label="BFD Setoff" value={fmt(Math.abs(totBFD),true)} sub="Brand funded discounts" color={C.neutral}/>
       </div>
 
-      {/* Platform logo strip */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+      {/* Platform logo strip — quick glance */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
         {platforms.map((p,i)=>(
-          <div key={i} title={p.name} style={{display:"flex",alignItems:"center",gap:6,background:C.surface,border:`1px solid ${p.net>=0?p.color+"44":C.border}`,borderRadius:8,padding:"5px 10px"}}>
+          <div key={i} onClick={()=>{setSelP(p.name);setView("platform_detail")}}
+            title={`${p.name} — Net: ${fmt(p.net,true)}`}
+            style={{display:"flex",alignItems:"center",gap:6,background:C.surface,border:`1px solid ${p.net>=0?p.color+"55":C.border}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",transition:"all 0.15s"}}
+            onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
+            onMouseLeave={e=>e.currentTarget.style.background=C.surface}>
             <PlatformLogo name={p.name} size={18}/>
             <span style={{color:p.color,fontSize:11,fontWeight:700}}>{p.name}</span>
             <span style={{color:p.net>=0?C.positive:C.negative,fontSize:11,fontWeight:800}}>{p.net>=0?"+":""}{(p.net/100000).toFixed(1)}L</span>
@@ -371,28 +374,159 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
         ))}
       </div>
 
+      {/* Tab switcher */}
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
-        {(["waterfall","platforms","aging"] as const).map(v=>(
-          <NavTab key={v} label={v==="waterfall"?"Waterfall":v==="platforms"?"By Platform":"AR Aging"} active={view===v} onClick={()=>setView(v)}/>
-        ))}
+        <NavTab label="Platform Summary" active={view==="summary"} onClick={()=>{setView("summary");setSelP(null)}}/>
+        <NavTab label="Waterfall" active={view==="waterfall"} onClick={()=>setView("waterfall")}/>
+        {selP && <NavTab label={`${selP} Detail`} active={view==="platform_detail"} onClick={()=>setView("platform_detail")}/>}
       </div>
 
+      {/* ── SUMMARY VIEW — the better view ── */}
+      {view==="summary" && (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* AR side — what platforms owe you */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:C.positiveDim,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:C.positive}}/>
+              <span style={{color:C.white,fontWeight:700,fontSize:13}}>ACCOUNTS RECEIVABLE — What Platforms Owe You</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                <thead><tr>
+                  <Th>Platform</Th>
+                  <Th>Gross Invoice</Th>
+                  <Th>Returns</Th>
+                  <Th>Net Sales</Th>
+                  <Th>Payment Recd</Th>
+                  <Th>BFD Setoff</Th>
+                  <Th>Adjustments</Th>
+                  <Th>AR4 (Final)</Th>
+                </tr></thead>
+                <tbody>
+                  {platforms.map((p,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}
+                      onClick={()=>{setSelP(p.name);setView("platform_detail")}}
+                      onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <PlatformLogo name={p.name} size={20}/>
+                          <span style={{color:p.color,fontWeight:700}}>{p.name}</span>
+                        </div>
+                      </td>
+                      <td style={{padding:"10px 12px",color:C.white}}>{fmt(p.invoice,true)}</td>
+                      <td style={{padding:"10px 12px",color:p.returns<0?C.negative:C.neutral}}>{p.returns!==0?fmt(p.returns,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.white,fontWeight:600}}>{fmt(p.netSales,true)}</td>
+                      <td style={{padding:"10px 12px",color:p.payment<0?C.negative:C.neutral}}>{p.payment!==0?fmt(p.payment,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.accent}}>{p.bfd!==0?fmt(p.bfd,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:p.adjustments<0?C.negative:C.neutral}}>{p.adjustments!==0?fmt(p.adjustments,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:p.ar4>=0?C.positive:C.negative,fontWeight:800,fontSize:12}}>{fmt(p.ar4,true)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{background:C.surfaceAlt,fontWeight:800}}>
+                    <td style={{padding:"10px 12px",color:C.accent,fontSize:12}}>TOTAL</td>
+                    <td style={{padding:"10px 12px",color:C.white}}>{fmt(totInv,true)}</td>
+                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(platforms.reduce((s,p)=>s+p.returns,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.white}}>{fmt(platforms.reduce((s,p)=>s+p.netSales,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(platforms.reduce((s,p)=>s+p.payment,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.accent}}>{fmt(totBFD,true)}</td>
+                    <td style={{padding:"10px 12px",color:C.neutral}}>{fmt(platforms.reduce((s,p)=>s+p.adjustments,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.positive,fontSize:13}}>{fmt(totAR4,true)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* AP side — what you owe platforms */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:C.negativeDim,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:C.negative}}/>
+              <span style={{color:C.white,fontWeight:700,fontSize:13}}>PLATFORM COSTS (AP) — Marketing, Fulfillment & Ad Spend Payables</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+                <thead><tr>
+                  <Th>Platform</Th>
+                  <Th>Cost Invoiced</Th>
+                  <Th>Paid</Th>
+                  <Th>AP1 (Outstanding)</Th>
+                  <Th>Debit Note</Th>
+                  <Th>TDS Deducted</Th>
+                  <Th>Adjustments</Th>
+                  <Th>AP4 (Net Payable)</Th>
+                </tr></thead>
+                <tbody>
+                  {platforms.filter(p=>p.apInvoice!==0||p.ap4!==0).map((p,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}
+                      onClick={()=>{setSelP(p.name);setView("platform_detail")}}
+                      onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <PlatformLogo name={p.name} size={20}/>
+                          <span style={{color:p.color,fontWeight:700}}>{p.name}</span>
+                        </div>
+                      </td>
+                      <td style={{padding:"10px 12px",color:C.negative}}>{p.apInvoice!==0?fmt(p.apInvoice,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.positive}}>{p.apPayment!==0?fmt(p.apPayment,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.negative,fontWeight:600}}>{p.ap1!==0?fmt(p.ap1,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.neutral}}>{p.debitNote!==0?fmt(p.debitNote,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.positive}}>{p.tdsDed!==0?fmt(p.tdsDed,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.neutral}}>{p.apAdj!==0?fmt(p.apAdj,true):"—"}</td>
+                      <td style={{padding:"10px 12px",color:p.ap4<=0?C.negative:C.positive,fontWeight:800,fontSize:12}}>{fmt(p.ap4,true)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{background:C.surfaceAlt,fontWeight:800}}>
+                    <td style={{padding:"10px 12px",color:C.accent,fontSize:12}}>TOTAL</td>
+                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(totPlatCost,true)}</td>
+                    <td style={{padding:"10px 12px",color:C.positive}}>{fmt(platforms.reduce((s,p)=>s+p.apPayment,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.negative}}>{fmt(platforms.reduce((s,p)=>s+p.ap1,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.neutral}}>{fmt(platforms.reduce((s,p)=>s+p.debitNote,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.positive}}>{fmt(platforms.reduce((s,p)=>s+p.tdsDed,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.neutral}}>{fmt(platforms.reduce((s,p)=>s+p.apAdj,0),true)}</td>
+                    <td style={{padding:"10px 12px",color:C.negative,fontSize:13}}>{fmt(totAP4,true)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Net position row */}
+          <div style={{background:C.surface,border:`1px solid ${totNet>=0?C.positive:C.negative}44`,borderRadius:12,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+            <div>
+              <div style={{color:C.dimText,fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase" as const}}>Net Position (AR4 + AP4)</div>
+              <div style={{color:totNet>=0?C.positive:C.negative,fontSize:28,fontWeight:800,letterSpacing:-1,marginTop:4}}>{fmt(totNet,true)}</div>
+              <div style={{color:C.dimText,fontSize:11,marginTop:4}}>Click any platform row to drill down →</div>
+            </div>
+            <div style={{display:"flex",gap:24}}>
+              <div style={{textAlign:"center" as const}}>
+                <div style={{color:C.positive,fontSize:20,fontWeight:800}}>{fmt(totAR4,true)}</div>
+                <div style={{color:C.dimText,fontSize:10}}>Total AR4</div>
+              </div>
+              <div style={{color:C.border,fontSize:24,alignSelf:"center"}}>−</div>
+              <div style={{textAlign:"center" as const}}>
+                <div style={{color:C.negative,fontSize:20,fontWeight:800}}>{fmt(Math.abs(totAP4),true)}</div>
+                <div style={{color:C.dimText,fontSize:10}}>Total AP4</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WATERFALL VIEW ── */}
       {view==="waterfall" && (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
           <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",borderBottom:`1px solid ${C.border}`,padding:"10px 16px",background:C.surfaceAlt}}>
-            {["LINE ITEM","ACCOUNTS RECEIVABLE","ACCOUNTS PAYABLE"].map(h=>(
+            {["LINE ITEM","ACCOUNTS RECEIVABLE","PLATFORM COSTS (AP)"].map(h=>(
               <div key={h} style={{color:C.dimText,fontSize:10,fontWeight:700,letterSpacing:1}}>{h}</div>
             ))}
           </div>
           {wf.map((row,i)=>(
             <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",padding:"10px 16px",background:row.final?C.accentDim:row.highlight?C.surfaceAlt:"transparent",borderBottom:`1px solid ${C.border}`,borderTop:row.divider?`1px solid ${C.accent}44`:"none"}}>
               <div style={{color:row.final?C.accent:row.highlight?C.white:C.neutral,fontSize:12,fontWeight:row.final||row.highlight?700:400}}>{row.label}</div>
-              <div style={{color:(row.ar??0)>=0?C.positive:C.negative,fontSize:12,fontWeight:row.final?700:500}}>
-                {row.ar===null?"—":fmt(row.ar??0)}
-              </div>
-              <div style={{color:row.ap===null?C.dimText:(row.ap??0)>=0?C.positive:C.negative,fontSize:12,fontWeight:row.final?700:500}}>
-                {row.ap===null?"—":fmt(row.ap??0)}
-              </div>
+              <div style={{color:(row.ar??0)>=0?C.positive:C.negative,fontSize:12,fontWeight:row.final?700:500}}>{row.ar===null?"—":fmt(row.ar??0)}</div>
+              <div style={{color:row.ap===null?C.dimText:(row.ap??0)>=0?C.positive:C.negative,fontSize:12,fontWeight:row.final?700:500}}>{row.ap===null?"—":fmt(row.ap??0)}</div>
             </div>
           ))}
           <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",padding:"12px 16px",background:C.accentDim}}>
@@ -403,97 +537,82 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
         </div>
       )}
 
-      {view==="platforms" && (
-        <div>
-          {/* Platform selector */}
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-            <button onClick={()=>setSelP(null)} style={{background:selP===null?C.accent:"transparent",color:selP===null?"#0B0F1A":C.neutral,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600}}>All</button>
-            {platforms.map(p=>(
-              <button key={p.name} onClick={()=>setSelP(p.name===selP?null:p.name)} style={{background:selP===p.name?p.color+"33":"transparent",color:selP===p.name?p.color:C.neutral,border:`1px solid ${selP===p.name?p.color:C.border}`,borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-                <PlatformLogo name={p.name} size={16}/>{p.name}</button>
-            ))}
+      {/* ── PLATFORM DETAIL VIEW ── */}
+      {view==="platform_detail" && selP && (()=>{
+        const p = platforms.find(x=>x.name===selP)!
+        if(!p) return null
+        return (
+          <div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+              {platforms.map(pl=>(
+                <button key={pl.name} onClick={()=>setSelP(pl.name)}
+                  style={{background:selP===pl.name?pl.color+"33":"transparent",color:selP===pl.name?pl.color:C.neutral,border:`1px solid ${selP===pl.name?pl.color:C.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                  <PlatformLogo name={pl.name} size={14}/>{pl.name}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {/* AR Card */}
+              <div style={{background:C.surface,border:`1px solid ${C.positive}44`,borderRadius:12,overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:C.positiveDim,display:"flex",alignItems:"center",gap:8}}>
+                  <PlatformLogo name={p.name} size={22}/>
+                  <span style={{color:C.white,fontWeight:700}}>{p.name} — Receivable</span>
+                </div>
+                {[
+                  {label:"Gross Invoice",val:p.invoice,color:C.white,bold:true},
+                  {label:"Returns",val:p.returns,color:C.negative},
+                  {label:"Net Sales",val:p.netSales,color:C.white,bold:true,div:true},
+                  {label:"Payment Received",val:p.payment,color:C.negative},
+                  {label:"AR1",val:p.ar1,color:C.positive,bold:true},
+                  {label:"TDS Receivable",val:p.tds,color:C.neutral},
+                  {label:"AR2",val:p.ar2,color:C.positive,bold:true},
+                  {label:"Brand Funded Disc",val:p.bfd,color:C.accent},
+                  {label:"AR3",val:p.ar3,color:C.positive,bold:true},
+                  {label:"Adjustments",val:p.adjustments,color:C.neutral},
+                  {label:"AR4 — FINAL",val:p.ar4,color:C.positive,bold:true,final:true},
+                ].map((r,j)=>(
+                  <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"8px 16px",background:r.final?C.positiveDim:r.div?C.surfaceAlt:"transparent",borderBottom:`1px solid ${C.border}22`}}>
+                    <span style={{color:r.bold?C.white:C.dimText,fontSize:12,fontWeight:r.bold?600:400}}>{r.label}</span>
+                    <span style={{color:r.color,fontSize:12,fontWeight:r.bold?700:500}}>{r.val!==0?fmt(r.val):"—"}</span>
+                  </div>
+                ))}
+              </div>
+              {/* AP Card */}
+              <div style={{background:C.surface,border:`1px solid ${C.negative}44`,borderRadius:12,overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:C.negativeDim,display:"flex",alignItems:"center",gap:8}}>
+                  <PlatformLogo name={p.name} size={22}/>
+                  <span style={{color:C.white,fontWeight:700}}>{p.name} — Platform Costs</span>
+                </div>
+                {[
+                  {label:"Cost Invoiced (by platform)",val:p.apInvoice,color:C.negative,bold:true},
+                  {label:"Amount Paid",val:p.apPayment,color:C.positive},
+                  {label:"AP1 (Outstanding Cost)",val:p.ap1,color:C.negative,bold:true,div:true},
+                  {label:"Debit Note",val:p.debitNote,color:C.neutral},
+                  {label:"AP2",val:p.ap2,color:C.negative,bold:true},
+                  {label:"TDS Deducted",val:p.tdsDed,color:C.positive},
+                  {label:"AP3",val:p.ap3,color:C.negative,bold:true},
+                  {label:"Adjustments",val:p.apAdj,color:C.neutral},
+                  {label:"AP4 — NET PAYABLE",val:p.ap4,color:p.ap4<=0?C.negative:C.positive,bold:true,final:true},
+                ].map((r,j)=>(
+                  <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"8px 16px",background:r.final?C.negativeDim:r.div?C.surfaceAlt:"transparent",borderBottom:`1px solid ${C.border}22`}}>
+                    <span style={{color:r.bold?C.white:C.dimText,fontSize:12,fontWeight:r.bold?600:400}}>{r.label}</span>
+                    <span style={{color:r.color,fontSize:12,fontWeight:r.bold?700:500}}>{r.val!==0?fmt(r.val):"—"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Net for this platform */}
+            <div style={{marginTop:12,background:C.surface,border:`1px solid ${p.net>=0?C.positive:C.negative}44`,borderRadius:12,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:C.dimText,fontSize:12}}>Net Position for {p.name}</span>
+              <span style={{color:p.net>=0?C.positive:C.negative,fontSize:22,fontWeight:800}}>{fmt(p.net,true)}</span>
+            </div>
           </div>
-
-          {selData ? (
-            // Single platform waterfall
-            <div style={{background:C.surface,border:`1px solid ${selData.color}`,borderRadius:12,overflow:"hidden"}}>
-              <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,background:selData.color+"11",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <PlatformLogo name={selData.name} size={28}/>
-                  <span style={{color:selData.color,fontWeight:800,fontSize:16}}>{selData.name}</span>
-                </div>
-                <Badge color={selData.net>=0?C.positive:C.negative}>{selData.net>=0?"NET +VE":"NET −VE"}</Badge>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",padding:"8px 16px",background:C.surfaceAlt,borderBottom:`1px solid ${C.border}`}}>
-                {["LINE ITEM","AR","AP"].map(h=><div key={h} style={{color:C.dimText,fontSize:9,fontWeight:700,letterSpacing:1}}>{h}</div>)}
-              </div>
-              {[
-                {label:"Invoice",ar:selData.invoice,ap:selData.apInvoice},
-                {label:"Returns",ar:selData.returns,ap:null},
-                {label:"Net Sales",ar:selData.netSales,ap:null,divider:true},
-                {label:"Payment",ar:selData.payment,ap:selData.apPayment},
-                {label:"AR1 / AP1",ar:selData.ar1,ap:selData.ap1,highlight:true},
-                {label:"TDS",ar:selData.tds,ap:selData.tdsDed},
-                {label:"AR2 / AP2",ar:selData.ar2,ap:selData.ap2,highlight:true},
-                {label:"Brand Funded Disc",ar:selData.bfd,ap:selData.debitNote},
-                {label:"AR3 / AP3",ar:selData.ar3,ap:selData.ap3,highlight:true},
-                {label:"AR/AP Adjustments",ar:selData.adjustments,ap:selData.apAdj},
-                {label:"AR4 / AP4 (FINAL)",ar:selData.ar4,ap:selData.ap4,highlight:true,final:true},
-              ].map((row,i)=>(
-                <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",padding:"9px 16px",background:row.final?C.accentDim:row.highlight?C.surfaceAlt:"transparent",borderBottom:`1px solid ${C.border}`,borderTop:row.divider?`1px solid ${C.accent}44`:"none"}}>
-                  <div style={{color:row.final?C.accent:row.highlight?C.white:C.neutral,fontSize:12,fontWeight:row.final||row.highlight?700:400}}>{row.label}</div>
-                  <div style={{color:(row.ar??0)>=0?C.positive:C.negative,fontSize:12,fontWeight:row.final?700:500}}>{row.ar===null?"—":fmt(row.ar??0)}</div>
-                  <div style={{color:row.ap===null?C.dimText:(row.ap??0)>=0?C.positive:C.negative,fontSize:12,fontWeight:row.final?700:500}}>{row.ap===null?"—":fmt(row.ap??0)}</div>
-                </div>
-              ))}
-              <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",padding:"12px 16px",background:C.accentDim}}>
-                <div style={{color:C.accent,fontWeight:800,fontSize:12}}>NET</div>
-                <div style={{color:selData.net>=0?C.positive:C.negative,fontWeight:800,fontSize:12}}>{fmt(selData.net)}</div>
-                <div/>
-              </div>
-            </div>
-          ) : (
-            // All platforms grid
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
-              {platforms.map((p,i)=>(
-                <div key={i} onClick={()=>setSelP(p.name)} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18,borderLeft:`3px solid ${p.color}`,cursor:"pointer",transition:"border-color 0.15s"}} onMouseEnter={e=>(e.currentTarget.style.borderColor=p.color)} onMouseLeave={e=>(e.currentTarget.style.borderColor=C.border)}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <PlatformLogo name={p.name} size={24}/>
-                    <div style={{color:p.color,fontWeight:800,fontSize:15}}>{p.name}</div>
-                  </div>
-                    <Badge color={p.net>=0?C.positive:C.negative}>{p.net>=0?"NET +VE":"NET −VE"}</Badge>
-                  </div>
-                  {[
-                    {label:"Invoice",val:p.invoice,color:C.neutral},
-                    {label:"BFD Setoff",val:p.bfd,color:C.accent},
-                    {label:"AR4",val:p.ar4,color:C.positive},
-                    {label:"AP4",val:p.ap4,color:C.negative},
-                  ].map((r,j)=>(
-                    <div key={j} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                      <span style={{color:C.dimText,fontSize:11}}>{r.label}</span>
-                      <span style={{color:r.color,fontSize:12,fontWeight:600}}>{fmt(r.val,true)}</span>
-                    </div>
-                  ))}
-                  <div style={{borderTop:`1px solid ${C.border}`,marginTop:10,paddingTop:10,display:"flex",justifyContent:"space-between"}}>
-                    <span style={{color:C.dimText,fontSize:11,fontWeight:700}}>NET</span>
-                    <span style={{color:p.net>=0?C.positive:C.negative,fontSize:13,fontWeight:800}}>{fmt(p.net,true)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {view==="aging" && (
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
-          <div style={{color:C.neutral,fontSize:13}}>AR Aging data comes from InsightBoard tab — add aging columns to individual platform tabs to enable this view.</div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
+
 
 // ─── P&L TAB (static from Zoho PDF) ─────────────────────────────────────────
 function PLTab() {
