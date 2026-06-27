@@ -252,24 +252,38 @@ function pct(a:number,b:number) { return b ? `${((a/b)*100).toFixed(1)}%` : "—
 
 // ─── PLATFORM LOGOS ───────────────────────────────────────────────────────────
 const LOGOS: Record<string, string> = {
-  Blinkit:   "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Blinkit-yellow-app-icon.svg/1200px-Blinkit-yellow-app-icon.svg.png",
-  Swiggy:    "https://upload.wikimedia.org/wikipedia/en/thumb/1/12/Swiggy_logo.svg/1200px-Swiggy_logo.svg.png",
-  Zepto:     "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Zepto_logo.svg/1200px-Zepto_logo.svg.png",
-  Amazon:    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/2560px-Amazon_logo.svg.png",
-  BigBasket: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Bigbasket_logo.svg/1200px-Bigbasket_logo.svg.png",
-  FirstClub: "https://media.licdn.com/dms/image/v2/D560BAQHLtIInAE5Y7A/company-logo_200_200/company-logo_200_200/0/1707754342849/firstclub_logo?e=2147483647&v=beta&t=WL0pJOuKGToagbhd_Z7JkqNKZqEwqW-JjzpXM7o-yY0",
-  LeMarche:  "https://lemarche.eu/wp-content/uploads/2023/03/Logo-LeMarche.png",
-  GoGlocal:  "https://goglocal.live/static/media/goglocal-logo.d9e0c5b0.png",
+  Blinkit:   "https://www.blinkit.com/favicon.ico",
+  Swiggy:    "https://www.swiggy.com/favicon.ico",
+  Zepto:     "https://cdn.zeptonow.com/production/tr:w-300,ar-1-1,pr-true,f-auto,q-80/inventory/brand/b9b45693-2a3e-49aa-86df-4a7e3a8e5d16.png",
+  Amazon:    "https://www.amazon.in/favicon.ico",
+  BigBasket: "https://www.bigbasket.com/favicon.ico",
+  FirstClub: "https://www.firstclub.io/favicon.ico",
+  LeMarche:  "https://www.lemarcheretail.in/favicon.ico",
+  GoGlocal:  "https://goglocal.live/favicon.ico",
+}
+
+// Fallback emoji if favicon fails
+const EMOJI: Record<string, string> = {
+  Blinkit: "⚡", Swiggy: "🛵", Zepto: "🟣", Amazon: "📦",
+  BigBasket: "🧺", FirstClub: "🏪", LeMarche: "🛒", GoGlocal: "🌐",
 }
 
 function PlatformLogo({ name, size = 20 }: { name: string; size?: number }) {
   const src = LOGOS[name]
   const bg = PLATFORMS.find(p => p.name === name)?.color || "#94A3B8"
-  if (!src) return <div style={{ width: size, height: size, borderRadius: 6, background: bg + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.5, fontWeight: 800, color: bg }}>{name[0]}</div>
+  const emoji = EMOJI[name] || name[0]
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) {
+    return (
+      <div style={{ width: size, height: size, borderRadius: size * 0.25, background: bg + "33", border: `1px solid ${bg}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.55, flexShrink: 0 }}>
+        {emoji}
+      </div>
+    )
+  }
   return (
-    <div style={{ width: size, height: size, borderRadius: 6, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-      <img src={src} alt={name} style={{ width: "90%", height: "90%", objectFit: "contain" }}
-        onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+    <div style={{ width: size, height: size, borderRadius: size * 0.25, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+      <img src={src} alt={name} style={{ width: "85%", height: "85%", objectFit: "contain" }}
+        onError={() => setFailed(true)} />
     </div>
   )
 }
