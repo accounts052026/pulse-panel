@@ -1181,11 +1181,25 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
       const catVals = keyVals(catKeys)
       if(catVals.every(v=>v===0)) return
       rows.push({label:cat,canonical:cat,category:cat,critical:"CRITICAL",vals:catVals,type:"OUT",txType:"expense",isSubtotal:true})
-      catKeys.sort((a,b)=>{
+      
+      // Sort by total absolute value descending
+      const sorted = catKeys.sort((a,b)=>{
         const sa=Object.values(entries[a].vals).reduce((s,v)=>s+Math.abs(v),0)
         const sb=Object.values(entries[b].vals).reduce((s,v)=>s+Math.abs(v),0)
         return sb-sa
-      }).forEach(k=>{
+      })
+      
+      // Show vendor payments first (they are bigger), then direct expenses
+      const vendorRows = sorted.filter(k=>entries[k].txType==="vendor_payment")
+      const expenseRows = sorted.filter(k=>entries[k].txType!=="vendor_payment")
+      
+      // Vendor payments with "VENDOR" badge
+      vendorRows.forEach(k=>{
+        const v=keyVals([k])
+        if(v.some(x=>x!==0)) rows.push({label:entries[k].canonical,canonical:entries[k].canonical,category:cat,critical:entries[k].critical,vals:v,type:"VENDOR",txType:"vendor_payment"})
+      })
+      // Direct expenses
+      expenseRows.forEach(k=>{
         const v=keyVals([k])
         if(v.some(x=>x!==0)) rows.push({label:entries[k].canonical,canonical:entries[k].canonical,category:cat,critical:entries[k].critical,vals:v,type:"EXPENSE",txType:entries[k].txType})
       })
@@ -1345,7 +1359,7 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                 <tbody>
                   {(bankData?bankData.rows:(wc as any)?.rows?.filter((r:any)=>!r.isCashBal)||[]).map((row:any,i:number)=>{
                     const isPos  = row.type==="CUSTOMER"||row.type==="IN"
-                    const isOut  = row.type==="OUT"||row.type==="EXPENSE"||row.type==="VENDOR"
+                    const isOut  = row.type==="OUT"||row.type==="EXPENSE"||row.type==="VENDOR"||row.type==="CLOSED"
                     const isNet  = row.type==="NET"
                     const isSub  = row.isSubtotal
                     const tc     = isNet?C.accent:isPos?C.positive:C.negative
@@ -1354,10 +1368,12 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                     const stickyBg = isNet?C.accentDim:row.isHeader?(isPos?C.positiveDim:C.negativeDim):isSub?(isPos?"#16A34A0A":"#DC26260A"):C.bg
                     return (
                       <tr key={i} style={{borderBottom:`1px solid ${row.isHeader||isNet?C.border:C.border+"33"}`,background:bg}}>
-                        <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const,width:55}}>
+                        <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const,width:60}}>
                           {row.isHeader&&<Badge color={tc}>{isPos?"CASH IN":"CASH OUT"}</Badge>}
                           {isNet&&<Badge color={C.accent}>NET</Badge>}
-                          {isSub&&<span style={{color:tc,fontSize:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase" as const}}>{row.label.includes("Vendor")?"VENDORS":row.label.includes("Receipt")?"RECEIPTS":"EXPENSES"}</span>}
+                          {isSub&&<span style={{color:tc,fontSize:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase" as const,whiteSpace:"nowrap" as const}}>{row.category}</span>}
+                          {!row.isHeader&&!isNet&&!isSub&&row.type==="VENDOR"&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"#D9770620",color:"#D97706",fontWeight:700}}>VENDOR</span>}
+                          {!row.isHeader&&!isNet&&!isSub&&row.type==="EXPENSE"&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"#64748B20",color:"#64748B",fontWeight:700}}>EXP</span>}
                           {!row.isHeader&&!isNet&&!isSub&&row.type==="CUSTOMER"&&(()=>{
                             const pc=row.label.includes("Blinkit")?PLATFORMS.find(p=>p.name==="Blinkit")?.color:
                               row.label.includes("Swiggy")?PLATFORMS.find(p=>p.name==="Swiggy")?.color:
