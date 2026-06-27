@@ -1188,15 +1188,23 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
       })
     })
 
-    // ── CASH IN ──
+    // ── CASH IN — merged by canonical platform name ──
+    // Platform display order
+    const PLATFORM_ORDER = ["Blinkit","Swiggy","Zepto","BigBasket","BigBasket/NB","Amazon","Amazon (Export)","FirstClub","D2C (Shopify)","Cred (D2C)","11 Seven (B2B)","GoGlocal","LeMarche","INCS","D2C — Direct"]
     rows.push({label:"TOTAL CASH IN",canonical:"TOTAL CASH IN",category:"PLATFORM IN",critical:"CRITICAL",vals:keyVals(custKeys),type:"IN",txType:"customer_payment",isHeader:true})
-    // Group by platform canonical name
+    // Group all entities by canonical name
     const platformGroups: Record<string,string[]> = {}
     custKeys.forEach(k=>{ const c=entries[k].canonical; if(!platformGroups[c])platformGroups[c]=[]; platformGroups[c].push(k) })
-    Object.entries(platformGroups).sort((a,b)=>{
-      const sa=keyVals(a[1]).reduce((s,v)=>s+v,0), sb=keyVals(b[1]).reduce((s,v)=>s+v,0)
-      return sb-sa
-    }).forEach(([platform,keys])=>{
+    // Sort by defined order first, then by value
+    const sortedPlatforms = Object.keys(platformGroups).sort((a,b)=>{
+      const oa=PLATFORM_ORDER.indexOf(a), ob=PLATFORM_ORDER.indexOf(b)
+      if(oa>=0&&ob>=0) return oa-ob
+      if(oa>=0) return -1
+      if(ob>=0) return 1
+      return keyVals(platformGroups[b]).reduce((s,v)=>s+v,0)-keyVals(platformGroups[a]).reduce((s,v)=>s+v,0)
+    })
+    sortedPlatforms.forEach(platform=>{
+      const keys=platformGroups[platform]
       const v=keyVals(keys)
       if(v.some(x=>x!==0)) rows.push({label:platform,canonical:platform,category:"PLATFORM IN",critical:"CRITICAL",vals:v,type:"CUSTOMER",txType:"customer_payment"})
     })
@@ -1344,9 +1352,19 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                     return (
                       <tr key={i} style={{borderBottom:`1px solid ${row.isHeader||isNet?C.border:C.border+"33"}`,background:bg}}>
                         <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const,width:55}}>
-                          {row.isHeader&&<Badge color={tc}>{isPos?"IN":"OUT"}</Badge>}
+                          {row.isHeader&&<Badge color={tc}>{isPos?"CASH IN":"CASH OUT"}</Badge>}
                           {isNet&&<Badge color={C.accent}>NET</Badge>}
-                          {isSub&&<span style={{color:tc,fontSize:8,fontWeight:700,letterSpacing:0.5}}>{isPos?"RECEIPTS":row.txType==="vendor_payment"?"VENDORS":"EXPENSES"}</span>}
+                          {isSub&&<span style={{color:tc,fontSize:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase" as const}}>{row.label.includes("Vendor")?"VENDORS":row.label.includes("Receipt")?"RECEIPTS":"EXPENSES"}</span>}
+                          {!row.isHeader&&!isNet&&!isSub&&row.type==="CUSTOMER"&&(()=>{
+                            const pc=row.label.includes("Blinkit")?PLATFORMS.find(p=>p.name==="Blinkit")?.color:
+                              row.label.includes("Swiggy")?PLATFORMS.find(p=>p.name==="Swiggy")?.color:
+                              row.label.includes("Zepto")?PLATFORMS.find(p=>p.name==="Zepto")?.color:
+                              row.label.includes("BigBasket")?PLATFORMS.find(p=>p.name==="BigBasket")?.color:
+                              row.label.includes("Amazon")?PLATFORMS.find(p=>p.name==="Amazon")?.color:
+                              row.label.includes("FirstClub")?PLATFORMS.find(p=>p.name==="FirstClub")?.color:
+                              C.neutral
+                            return pc?<PlatformLogo name={row.label.split(" ")[0]} size={14}/>:null
+                          })()}
                         </td>
                         <td style={{padding:"5px 12px",paddingLeft:isSub?16:indent>0?24:12,position:"sticky" as const,left:55,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,whiteSpace:"nowrap" as const,fontSize:isNet||row.isHeader?11:isSub?10:10}}>
                           <div style={{display:"flex",alignItems:"center",gap:6}}>
