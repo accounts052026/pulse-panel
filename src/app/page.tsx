@@ -1114,7 +1114,7 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
             <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt}}>
               <span style={{color:C.white,fontWeight:700,fontSize:13}}>Working Capital Requirement</span>
-              <span style={{color:C.dimText,fontSize:10,marginLeft:8}}>Live from bank data · {wc.nCols} months</span>
+              <span style={{color:C.dimText,fontSize:10,marginLeft:8}}>Live from bank data · {bankData?bankData.mLabels.length:(wc as any)?.nCols||0} months</span>
             </div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:10}}>
