@@ -35,6 +35,154 @@ const C = {
   dimText:     "#64748B",
 }
 
+
+// ─── VENDOR / EXPENSE MASTER ─────────────────────────────────────────────────
+type Criticality = "CRITICAL" | "MEDIUM" | "LOW" | "ONE-TIME" | "BAND"
+
+interface VendorMaster {
+  canonical: string      // display name
+  category: string       // grouping category
+  critical: Criticality  // can we stop paying?
+  note: string
+}
+
+const VENDOR_MASTER: Record<string, VendorMaster> = {
+  // ── SALARIES ──
+  "Salaries and Employee Wages":        {canonical:"Salaries & Wages",       category:"SALARIES",    critical:"CRITICAL",  note:"Core team payroll"},
+  "Salary Payable":                     {canonical:"Salaries & Wages",       category:"SALARIES",    critical:"CRITICAL",  note:"Payroll (accrued)"},
+  "Salaries and employee wages":        {canonical:"Salaries & Wages",       category:"SALARIES",    critical:"CRITICAL",  note:"Core team payroll"},
+
+  // ── RAW MATERIAL ──
+  "AMIT VEGETABLES":                    {canonical:"Amit Vegetables",        category:"RAW MATERIAL",critical:"CRITICAL",  note:"Sabziwala — cannot stop"},
+  "Amit Vegetables":                    {canonical:"Amit Vegetables",        category:"RAW MATERIAL",critical:"CRITICAL",  note:"Sabziwala — cannot stop"},
+  "NAVEEN GENERAL STORE":               {canonical:"Naveen General Store",   category:"RAW MATERIAL",critical:"CRITICAL",  note:"Masala & spices — cannot stop"},
+  "SSV KISAN BANDHU":                   {canonical:"SSV Kisan Bandhu",       category:"RAW MATERIAL",critical:"CRITICAL",  note:"RM processing"},
+  "Raw Material and Kitchen Expenses":  {canonical:"Raw Material (Direct)",  category:"RAW MATERIAL",critical:"CRITICAL",  note:"Direct RM purchases"},
+  "Gajendra":                           {canonical:"Gajendra (Gas)",         category:"RAW MATERIAL",critical:"CRITICAL",  note:"Gas supplier"},
+
+  // ── PACKAGING ──
+  "FOODPRO PACKAGING PRIVATE LIMITED":  {canonical:"Foodpro Packaging",      category:"PACKAGING",   critical:"CRITICAL",  note:"Inner pouches — cannot stop"},
+  "Foodpro Packaging Private Limited":  {canonical:"Foodpro Packaging",      category:"PACKAGING",   critical:"CRITICAL",  note:"Inner pouches — cannot stop"},
+  "TURTLE MEDIA PRIVATE LIMITED":       {canonical:"Turtle Media",           category:"PACKAGING",   critical:"CRITICAL",  note:"Outer pouches — cannot stop"},
+  "Turtle Media Private Limited":       {canonical:"Turtle Media",           category:"PACKAGING",   critical:"CRITICAL",  note:"Outer pouches — cannot stop"},
+  "Vikas packaging":                    {canonical:"Vikas/Narayani (Cartons)",category:"PACKAGING",  critical:"CRITICAL",  note:"Carton boxes — cannot stop"},
+  "NARAYANI ENTERPRISES":               {canonical:"Vikas/Narayani (Cartons)",category:"PACKAGING",  critical:"CRITICAL",  note:"Same as Vikas — cannot stop"},
+  "Label Inc":                          {canonical:"Label Inc (Labels)",      category:"PACKAGING",   critical:"MEDIUM",    note:"Labels & stickers — 2 months cycle"},
+  "Mr Print":                           {canonical:"Mr Print",               category:"PACKAGING",   critical:"BAND",      note:"Replaced by Turtle Media"},
+
+  // ── RETORT PROCESSING ──
+  "RIVI INTERNATIONAL FOOD LLP":        {canonical:"Rivi/SRK (Retort)",      category:"RETORT",      critical:"CRITICAL",  note:"Same entity as SRK — cannot stop"},
+  "SRK INTERNATIONAL FOOD (SHIVANI)":   {canonical:"Rivi/SRK (Retort)",      category:"RETORT",      critical:"CRITICAL",  note:"Same entity as Rivi — cannot stop"},
+  "NEELKANTH R & D RETORTS":            {canonical:"Neelkanth (Machinery)",  category:"MACHINERY",   critical:"ONE-TIME",  note:"Machinery purchase only"},
+
+  // ── LOGISTICS ──
+  "MOVIN EXPRESS PRIVATE LIMITED":      {canonical:"Movin Express",          category:"LOGISTICS",   critical:"CRITICAL",  note:"Platform WH dispatch — cannot stop"},
+  "Movin Express Private Limited":      {canonical:"Movin Express",          category:"LOGISTICS",   critical:"CRITICAL",  note:"Platform WH dispatch — cannot stop"},
+  "Shiprocket Private Limited Delhi (AAEC)":{canonical:"Shiprocket",         category:"LOGISTICS",   critical:"CRITICAL",  note:"Amazon logistics — cannot stop"},
+  "S2 LOGISTICS":                       {canonical:"S2 Logistics",           category:"LOGISTICS",   critical:"CRITICAL",  note:"Amazon shipments"},
+  "AMIT TRANSPORT COMPANY":             {canonical:"Amit Transport",         category:"LOGISTICS",   critical:"BAND",      note:"Band ho gaya"},
+  "Rajesh Transport":                   {canonical:"Rajesh Transport",       category:"LOGISTICS",   critical:"BAND",      note:"Band ho gaya"},
+  "Internal Logistic Expenses":         {canonical:"Internal Logistics",     category:"LOGISTICS",   critical:"MEDIUM",    note:"Internal movement"},
+
+  // ── MARKETING ──
+  "BLINK COMMERCE PRIVATE LIMITED":     {canonical:"Blinkit Ads (Blink Commerce)",category:"MARKETING",critical:"MEDIUM", note:"Blinkit platform ads"},
+  "Blink Commerce Private Limited":     {canonical:"Blinkit Ads (Blink Commerce)",category:"MARKETING",critical:"MEDIUM", note:"Blinkit platform ads"},
+  "Marketing - Discretionary Brand Spends":{canonical:"Brand Marketing",    category:"MARKETING",   critical:"MEDIUM",    note:"Can reduce in crunch"},
+  "Advertising And Marketing":          {canonical:"Advertising & Marketing",category:"MARKETING",   critical:"MEDIUM",    note:"Platform ads"},
+  "KWAZI DESIGN LLP":                   {canonical:"Kwazi Design (Agency)",  category:"MARKETING",   critical:"LOW",       note:"Can stop in crunch"},
+  "TURTLE MEDIA":                       {canonical:"Turtle Media (Mktg)",    category:"MARKETING",   critical:"LOW",       note:"Marketing work"},
+  "DAKSHITA FINSHARK VENTURES":         {canonical:"Vandana (Consultant)",   category:"MARKETING",   critical:"LOW",       note:"Can stop"},
+  "PLANOUT GROUP PRIVATE LIMITED":      {canonical:"Marketing Agency",       category:"MARKETING",   critical:"LOW",       note:"Can stop"},
+  "B2C Cred Sales 23-26":               {canonical:"Cred (D2C)",             category:"PLATFORM IN", critical:"MEDIUM",    note:"Cred orders"},
+
+  // ── RENT ──
+  "Arun Kumar Rent_Warehouse_Jonapur":  {canonical:"Warehouse Rent (Jonapur)",category:"RENT",       critical:"CRITICAL",  note:"₹1L/month — cannot stop"},
+  "Monika Banga Rent_Office_Vasant Kunj":{canonical:"Office Rent (VK)",      category:"RENT",        critical:"CRITICAL",  note:"Cannot stop"},
+  "Harish Mehlawat Rent_Warehouse_Vasant Kunj":{canonical:"Kitchen Rent (VK, Old)",category:"RENT",  critical:"BAND",      note:"Old kitchen — band"},
+  "Bulbul Mehla Rent_D7_Vasant Kunj":   {canonical:"Old WH Rent (D7, Band)", category:"RENT",        critical:"BAND",      note:"Old warehouse — band"},
+  "Cash Rent_Kitchen_Vasant kunj":      {canonical:"Cash Kitchen Rent (Band)",category:"RENT",       critical:"BAND",      note:"Old kitchen cash rent"},
+  "Rent Expense":                       {canonical:"Rent",                   category:"RENT",        critical:"CRITICAL",  note:"Rent payments"},
+
+  // ── INSURANCE ──
+  "Onsurity Technologies Private Limited":{canonical:"Onsurity (Insurance)", category:"INSURANCE",   critical:"CRITICAL",  note:"Employee health insurance"},
+
+  // ── REPAIR & MAINTENANCE ──
+  "Repairs and Maintenance":            {canonical:"Repairs & Maintenance",  category:"R&M",         critical:"MEDIUM",    note:"General maintenance"},
+  "TECH T SOLUTION":                    {canonical:"Tech T (Electrician)",   category:"R&M",         critical:"MEDIUM",    note:"Abdul — repair work"},
+  "RS INDUSTRIES":                      {canonical:"RS Industries (Machinery)",category:"R&M",        critical:"LOW",       note:"Not often"},
+
+  // ── LOAN ──
+  "Loan Interest":                      {canonical:"Loan Interest (Bajaj)",  category:"LOAN",        critical:"CRITICAL",  note:"Cannot stop"},
+  "Finance Charges":                    {canonical:"Finance Charges",        category:"LOAN",        critical:"CRITICAL",  note:"Cannot stop"},
+  "BAJAJ FINANCE LIMITED":              {canonical:"Bajaj Finance (EMI)",    category:"LOAN",        critical:"CRITICAL",  note:"Cannot stop"},
+
+  // ── PROFESSIONAL ──
+  "Vantage Law Advisors":               {canonical:"Legal (Vantage Law)",    category:"PROFESSIONAL",critical:"LOW",       note:"Legal services"},
+  "GOOGLE INDIA PRIVATE LIMITED":       {canonical:"Google (Software/Ads)",  category:"PROFESSIONAL",critical:"LOW",       note:"Google services"},
+  "Software Expense":                   {canonical:"Software",               category:"PROFESSIONAL",critical:"MEDIUM",    note:"Tools & subscriptions"},
+
+  // ── UTILITIES ──
+  "Electricity expenses":               {canonical:"Electricity",            category:"UTILITIES",   critical:"CRITICAL",  note:"Cannot stop"},
+  "Water Expense":                      {canonical:"Water",                  category:"UTILITIES",   critical:"CRITICAL",  note:"Cannot stop"},
+
+  // ── OTHER ──
+  "Admin Expenses":                     {canonical:"Admin Expenses",         category:"ADMIN",       critical:"LOW",       note:"Misc admin"},
+  "Office expenses":                    {canonical:"Office Expenses",        category:"ADMIN",       critical:"LOW",       note:"Office misc"},
+  "Staff & Welfare Expense":            {canonical:"Staff Welfare",          category:"ADMIN",       critical:"LOW",       note:"Team welfare"},
+  "Hosting & Welfare":                  {canonical:"Hosting & Welfare",      category:"ADMIN",       critical:"LOW",       note:"Team hosting"},
+  "Other Expenses":                     {canonical:"Other Expenses",         category:"ADMIN",       critical:"LOW",       note:"Miscellaneous"},
+  "Bank Fees and Charges":              {canonical:"Bank Charges",           category:"ADMIN",       critical:"CRITICAL",  note:"Bank fees"},
+  "Tour & Travel - Foreign & Domestic": {canonical:"Travel",                 category:"ADMIN",       critical:"LOW",       note:"Can reduce"},
+
+  // ── PLATFORM RECEIPTS (CASH IN) ──
+  "Moonstone Ventures LLP":             {canonical:"Blinkit",                category:"PLATFORM IN", critical:"CRITICAL",  note:"Blinkit entity 1"},
+  "ASVAH RETAIL PRIVATE LIMITED":       {canonical:"Blinkit",                category:"PLATFORM IN", critical:"CRITICAL",  note:"Blinkit entity 2"},
+  "Scootsy Logistics Private Ltd":      {canonical:"Swiggy",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Swiggy entity"},
+  "PJTJ TECHNOLOGIES PRIVATE LIMITED":  {canonical:"Swiggy",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Swiggy entity"},
+  "MOKSH ENTERPRISES PRIVATE LIMITED":  {canonical:"Swiggy",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Swiggy entity"},
+  "CLOUDSTORE RETAIL PRIVATE LIMITED":  {canonical:"Swiggy",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Swiggy entity"},
+  "CLOUDKART VENTURES PRIVATE LIMITED": {canonical:"Swiggy",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Swiggy entity"},
+  "JUPITER KART PRIVATE LIMITED":       {canonical:"Swiggy",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Swiggy entity"},
+  "KIRANAKART TECHNOLOGIES PRIVATE LIMITED":{canonical:"Zepto",              category:"PLATFORM IN", critical:"CRITICAL",  note:"Zepto entity"},
+  "Zepto Limited":                      {canonical:"Zepto",                  category:"PLATFORM IN", critical:"CRITICAL",  note:"Zepto"},
+  "Zepto Private Limited":              {canonical:"Zepto",                  category:"PLATFORM IN", critical:"CRITICAL",  note:"Zepto"},
+  "INNOVATIVE RETAIL CONCEPTS PRIVATE LIMITED":{canonical:"BigBasket",       category:"PLATFORM IN", critical:"CRITICAL",  note:"BigBasket entity"},
+  "NATURES BASKET LIMITED":             {canonical:"BigBasket/NB",           category:"PLATFORM IN", critical:"MEDIUM",    note:"Natures Basket"},
+  "FIRSTCLUB TECHNOLOGY PRIVATE LIMITED":{canonical:"FirstClub",             category:"PLATFORM IN", critical:"MEDIUM",    note:"FirstClub"},
+  "B2C Customer Shopify":               {canonical:"D2C (Shopify)",          category:"PLATFORM IN", critical:"MEDIUM",    note:"Direct to consumer"},
+  "B2B/B2C Amazon":                     {canonical:"Amazon",                 category:"PLATFORM IN", critical:"CRITICAL",  note:"Amazon marketplace"},
+  "Amazon USA Sales":                   {canonical:"Amazon (Export)",        category:"PLATFORM IN", critical:"MEDIUM",    note:"Amazon USA"},
+  "B2C Cred Sales 26-27":               {canonical:"Cred (D2C)",             category:"PLATFORM IN", critical:"MEDIUM",    note:"Cred orders"},
+  "11 Seven Group":                     {canonical:"11 Seven (B2B)",         category:"PLATFORM IN", critical:"MEDIUM",    note:"B2B customer"},
+  "GOGLOCAL PRIVATE LIMITED":           {canonical:"GoGlocal",               category:"PLATFORM IN", critical:"MEDIUM",    note:"GoGlocal platform"},
+  "Marche Retail Pvt Ltd":              {canonical:"LeMarche",               category:"PLATFORM IN", critical:"MEDIUM",    note:"LeMarche"},
+}
+
+const CATEGORY_ORDER = [
+  "SALARIES","RAW MATERIAL","PACKAGING","RETORT","LOGISTICS",
+  "MARKETING","RENT","INSURANCE","LOAN","UTILITIES",
+  "R&M","PROFESSIONAL","ADMIN","MACHINERY","PLATFORM IN"
+]
+
+const CRITICAL_COLOR: Record<Criticality, string> = {
+  "CRITICAL":  "#DC2626",
+  "MEDIUM":    "#D97706",
+  "LOW":       "#64748B",
+  "ONE-TIME":  "#8B5CF6",
+  "BAND":      "#94A3B8",
+}
+
+function getVendorInfo(name: string): VendorMaster {
+  // Exact match first
+  if(VENDOR_MASTER[name]) return VENDOR_MASTER[name]
+  // Partial match
+  const lower = name.toLowerCase()
+  for(const [key,val] of Object.entries(VENDOR_MASTER)){
+    if(lower.includes(key.toLowerCase())||key.toLowerCase().includes(lower)) return val
+  }
+  return {canonical:name, category:"OTHER", critical:"LOW", note:""}
+}
+
 // ─── CSV PARSER ───────────────────────────────────────────────────────────────
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -950,86 +1098,81 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
     const MN=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
     const mLabels = sortedMonths.map(ym=>{ const [y,m]=ym.split("-"); return `${MN[Number(m)]} ${String(y).slice(2)}` })
 
-    // Group: txType → particularName → month → sum
-    // particularName = transaction_details (for expenses) or account_name (for vendor/customer)
-    interface Entry { vals: Record<string,number>; txType: string; accName: string }
+    // Group using VENDOR MASTER — canonical names, merged entities
+    interface Entry { vals: Record<string,number>; txType: string; canonical: string; category: string; critical: Criticality }
     const entries: Record<string, Entry> = {}
 
     for(let i=1;i<bankRows.length;i++){
       const r=bankRows[i]
       const m=r[monthIdx]?.trim(), y=r[yearIdx]?.trim()
       if(!m||!y||isNaN(Number(m))||isNaN(Number(y))) continue
-      const ym    = `${y}-${m.padStart(2,"0")}`
-      const txType= r[txIdx]?.trim()||""
-      const acc   = r[accIdx]?.trim()||"Unknown"
-      const det   = r[detIdx]?.trim()||acc
-      const val   = n(r[netIdx]||"0")
-      if(txType==="transfer_fund") continue // skip internal transfers
+      const ym     = `${y}-${m.padStart(2,"0")}`
+      const txType = r[txIdx]?.trim()||""
+      const acc    = r[accIdx]?.trim()||"Unknown"
+      const det    = r[detIdx]?.trim()||acc
+      const val    = n(r[netIdx]||"0")
+      if(txType==="transfer_fund") continue
 
-      // Key: for customer_payment use account_name, for others use transaction_details
-      const key = txType==="customer_payment" ? acc : det
-      if(!entries[key]) entries[key]={vals:{},txType,accName:acc}
+      // Resolve via master — use account_name for vendors/customers, transaction_details for expenses
+      const lookupKey = txType==="customer_payment"?acc:txType==="vendor_payment"?acc:det
+      const info = getVendorInfo(lookupKey)
+      const key  = info.canonical // merge same entities
+
+      if(!entries[key]) entries[key]={vals:{},txType,canonical:info.canonical,category:info.category,critical:info.critical}
       entries[key].vals[ym]=(entries[key].vals[ym]||0)+val
     }
 
-    interface BR{label:string;subLabel?:string;vals:number[];type:string;txType:string;isHeader?:boolean;isTotal?:boolean;isSubtotal?:boolean}
+    // Sort months NEW → OLD
+    const displayMonths = [...sortedMonths].reverse()
+    const displayLabels = displayMonths.map(ym=>{ const [y,m]=ym.split("-"); const MN2=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${MN2[Number(m)]} ${String(y).slice(2)}` })
+
+    interface BR{label:string;canonical:string;category:string;critical:Criticality;vals:number[];type:string;txType:string;isHeader?:boolean;isTotal?:boolean;isSubtotal?:boolean}
     const rows:BR[]=[]
 
-    // ── EXPENSES (direct debits, not vendor bills) ──
-    const expKeys    = Object.keys(entries).filter(k=>entries[k].txType==="expense"||entries[k].txType==="expense_refund")
-    const vendorKeys = Object.keys(entries).filter(k=>entries[k].txType==="vendor_payment")
-    const custKeys   = Object.keys(entries).filter(k=>entries[k].txType==="customer_payment")
-    const otherOutKeys = Object.keys(entries).filter(k=>!["expense","expense_refund","vendor_payment","customer_payment"].includes(entries[k].txType))
+    const custKeys   = Object.keys(entries).filter(k=>entries[k].category==="PLATFORM IN")
+    const outKeys    = Object.keys(entries).filter(k=>entries[k].category!=="PLATFORM IN")
+    const sumKeys    = (keys:string[],ym:string)=>keys.reduce((s,k)=>s+(entries[k].vals[ym]||0),0)
+    const keyVals    = (keys:string[])=>displayMonths.map(ym=>sumKeys(keys,ym))
 
-    const sumKeys = (keys:string[], ym:string) => keys.reduce((s,k)=>s+(entries[k].vals[ym]||0),0)
-    const keyVals = (keys:string[]) => sortedMonths.map(ym=>sumKeys(keys,ym))
+    // ── CASH OUT ──
+    rows.push({label:"TOTAL CASH OUT",canonical:"TOTAL CASH OUT",category:"",critical:"CRITICAL",vals:keyVals(outKeys),type:"OUT",txType:"out",isHeader:true})
 
-    // Total cash out header
-    const allOutKeys = [...expKeys,...vendorKeys,...otherOutKeys]
-    rows.push({label:"TOTAL CASH OUT",vals:keyVals(allOutKeys),type:"OUT",txType:"out",isHeader:true})
-
-    // Expenses subtotal + details
-    if(expKeys.length>0){
-      rows.push({label:"Direct Expenses",vals:keyVals(expKeys),type:"OUT",txType:"expense",isSubtotal:true})
-      expKeys.sort((a,b)=>{
-        const ta=Math.abs(entries[b].vals[sortedMonths[sortedMonths.length-1]]||0)
-        const tb=Math.abs(entries[a].vals[sortedMonths[sortedMonths.length-1]]||0)
-        return ta-tb
+    // Group by category in order
+    const outCategories = CATEGORY_ORDER.filter(cat=>cat!=="PLATFORM IN"&&outKeys.some(k=>entries[k].category===cat))
+    outCategories.forEach(cat=>{
+      const catKeys = outKeys.filter(k=>entries[k].category===cat)
+      if(catKeys.length===0) return
+      const catVals = keyVals(catKeys)
+      if(catVals.every(v=>v===0)) return
+      rows.push({label:cat,canonical:cat,category:cat,critical:"CRITICAL",vals:catVals,type:"OUT",txType:"expense",isSubtotal:true})
+      catKeys.sort((a,b)=>{
+        const sa=Object.values(entries[a].vals).reduce((s,v)=>s+Math.abs(v),0)
+        const sb=Object.values(entries[b].vals).reduce((s,v)=>s+Math.abs(v),0)
+        return sb-sa
       }).forEach(k=>{
         const v=keyVals([k])
-        if(v.some(x=>x!==0)) rows.push({label:k,vals:v,type:"EXPENSE",txType:"expense"})
+        if(v.some(x=>x!==0)) rows.push({label:entries[k].canonical,canonical:entries[k].canonical,category:cat,critical:entries[k].critical,vals:v,type:"EXPENSE",txType:entries[k].txType})
       })
-    }
-
-    // Vendor payments subtotal + details
-    if(vendorKeys.length>0){
-      rows.push({label:"Vendor Payments",vals:keyVals(vendorKeys),type:"OUT",txType:"vendor_payment",isSubtotal:true})
-      vendorKeys.sort((a,b)=>{
-        const sumA=entries[a].vals?Object.values(entries[a].vals).reduce((s,v)=>s+Math.abs(v),0):0
-        const sumB=entries[b].vals?Object.values(entries[b].vals).reduce((s,v)=>s+Math.abs(v),0):0
-        return sumB-sumA
-      }).forEach(k=>{
-        const v=keyVals([k])
-        if(v.some(x=>x!==0)) rows.push({label:k,vals:v,type:"VENDOR",txType:"vendor_payment"})
-      })
-    }
-
-    // Customer receipts
-    rows.push({label:"TOTAL CASH IN",vals:keyVals(custKeys),type:"IN",txType:"customer_payment",isHeader:true})
-    custKeys.sort((a,b)=>{
-      const sumA=Object.values(entries[a].vals).reduce((s,v)=>s+v,0)
-      const sumB=Object.values(entries[b].vals).reduce((s,v)=>s+v,0)
-      return sumB-sumA
-    }).forEach(k=>{
-      const v=keyVals([k])
-      if(v.some(x=>x!==0)) rows.push({label:k,vals:v,type:"CUSTOMER",txType:"customer_payment"})
     })
 
-    // Net
-    const netVals=sortedMonths.map(ym=>sumKeys(custKeys,ym)+sumKeys(allOutKeys,ym))
-    rows.push({label:"NET CASH FLOW",vals:netVals,type:"NET",txType:"net",isTotal:true})
+    // ── CASH IN ──
+    rows.push({label:"TOTAL CASH IN",canonical:"TOTAL CASH IN",category:"PLATFORM IN",critical:"CRITICAL",vals:keyVals(custKeys),type:"IN",txType:"customer_payment",isHeader:true})
+    // Group by platform canonical name
+    const platformGroups: Record<string,string[]> = {}
+    custKeys.forEach(k=>{ const c=entries[k].canonical; if(!platformGroups[c])platformGroups[c]=[]; platformGroups[c].push(k) })
+    Object.entries(platformGroups).sort((a,b)=>{
+      const sa=keyVals(a[1]).reduce((s,v)=>s+v,0), sb=keyVals(b[1]).reduce((s,v)=>s+v,0)
+      return sb-sa
+    }).forEach(([platform,keys])=>{
+      const v=keyVals(keys)
+      if(v.some(x=>x!==0)) rows.push({label:platform,canonical:platform,category:"PLATFORM IN",critical:"CRITICAL",vals:v,type:"CUSTOMER",txType:"customer_payment"})
+    })
 
-    return {mLabels,sortedMonths,rows,netVals}
+    // NET
+    const netVals=displayMonths.map(ym=>sumKeys(custKeys,ym)+sumKeys(outKeys,ym))
+    rows.push({label:"NET CASH FLOW",canonical:"NET CASH FLOW",category:"NET",critical:"CRITICAL",vals:netVals,type:"NET",txType:"net",isTotal:true})
+
+    return {mLabels:displayLabels,sortedMonths:displayMonths,rows,netVals}
   }
 
   // ── WC PARSER (fallback) ──
@@ -1173,10 +1316,17 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                           {isSub&&<span style={{color:tc,fontSize:8,fontWeight:700,letterSpacing:0.5}}>{isPos?"RECEIPTS":row.txType==="vendor_payment"?"VENDORS":"EXPENSES"}</span>}
                         </td>
                         <td style={{padding:"5px 12px",paddingLeft:isSub?16:indent>0?24:12,position:"sticky" as const,left:55,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,whiteSpace:"nowrap" as const,fontSize:isNet||row.isHeader?11:isSub?10:10}}>
-                          <span style={{color:isNet?C.accent:row.isHeader?tc:isSub?tc:C.white,fontWeight:isNet||row.isHeader?800:isSub?700:400}}>
-                            {indent>0&&<span style={{color:C.dimText,marginRight:6}}>└</span>}
-                            {row.label}
-                          </span>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            {indent>0&&<span style={{color:C.dimText,fontSize:9}}>└</span>}
+                            <span style={{color:isNet?C.accent:row.isHeader?tc:isSub?tc:C.white,fontWeight:isNet||row.isHeader?800:isSub?700:400}}>
+                              {row.label}
+                            </span>
+                            {indent>0&&row.critical&&row.critical!=="CRITICAL"&&(
+                              <span style={{fontSize:8,padding:"1px 5px",borderRadius:3,background:CRITICAL_COLOR[row.critical as Criticality]+"22",color:CRITICAL_COLOR[row.critical as Criticality],fontWeight:700,letterSpacing:0.5}}>
+                                {row.critical==="BAND"?"BAND":row.critical==="ONE-TIME"?"1x":row.critical}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         {row.vals.map((v:number,j:number)=>(
                           <td key={j} style={{padding:"5px 10px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,
