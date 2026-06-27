@@ -56,6 +56,21 @@ function n(s: string): number {
   return parseFloat(clean) || 0
 }
 
+
+// ─── DATE UTILS ───────────────────────────────────────────────────────────────
+function parseDate(s: string): Date | null {
+  if (!s) return null
+  // Handles: "23-Mar-2024", "29-Oct-2025", "2024-03-23", "23/03/2024"
+  const months: Record<string,number> = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}
+  const dmy = s.match(/^(\d{1,2})[\-\/](\w{3})[\-\/](\d{4})$/)
+  if (dmy) { const m = months[dmy[2].toLowerCase()]; return isNaN(m) ? null : new Date(+dmy[3], m, +dmy[1]) }
+  const ymd = s.match(/^(\d{4})[\-\/](\d{2})[\-\/](\d{2})$/)
+  if (ymd) return new Date(+ymd[1], +ymd[2]-1, +ymd[3])
+  const dmy2 = s.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})$/)
+  if (dmy2) return new Date(+dmy2[3], +dmy2[2]-1, +dmy2[1])
+  return null
+}
+
 // ─── PLATFORM DATA EXTRACTOR ──────────────────────────────────────────────────
 // Tab structure (0-indexed rows):
 // Row 0: empty
@@ -98,7 +113,7 @@ interface PlatformCalc {
   accrualAP: number
 }
 
-function extractPlatformData(rows: string[][], name: string, color: string): PlatformCalc {
+function extractPlatformData(rows: string[][], name: string, color: string, dateFrom?: Date, dateTo?: Date): PlatformCalc {
   // Summary rows (rows 2-4): col E=entity, col F=Accrual, col G=Accrual(Event)
   // Find accrual totals from top summary
   let accrualAR = 0, accrualAP = 0
@@ -127,6 +142,13 @@ function extractPlatformData(rows: string[][], name: string, color: string): Pla
   for (let i = dataStart; i < rows.length; i++) {
     const r = rows[i]
     if (!r || r.length < 6) continue
+
+    // Date filter
+    const txDate = parseDate(r[0]?.trim() || "")
+    if (txDate) {
+      if (dateFrom && txDate < dateFrom) continue
+      if (dateTo && txDate > dateTo) continue
+    }
 
     // AR side
     const arType = r[1]?.trim().toLowerCase() || ""
@@ -629,15 +651,17 @@ export default function Home() {
   const [loadingMsg,setLoadingMsg] = useState("Fetching data...")
   const [error,setError]       = useState("")
   const [lastRefresh,setLastRefresh] = useState<Date|null>(null)
+  const [dateFrom,setDateFrom] = useState("")
+  const [dateTo,setDateTo]     = useState("")
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (from?: Date, to?: Date) => {
     setLoading(true); setError("")
     try {
       // Fetch all platform tabs + CF sheet in parallel
       const platformFetches = PLATFORMS.map(p =>
         fetch(`${SHEET_BASE}?gid=${p.gid}&single=true&output=csv&t=${Date.now()}`)
           .then(r => r.text())
-          .then(t => extractPlatformData(parseCSV(t), p.name, p.color))
+          .then(t => extractPlatformData(parseCSV(t), p.name, p.color, from, to))
       )
       const cfFetch = fetch(`${CF_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
 
@@ -673,8 +697,19 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <button onClick={fetchAll} disabled={loading} style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,color:loading?C.dimText:C.accent,borderRadius:8,padding:"6px 14px",fontSize:12,cursor:loading?"not-allowed":"pointer",fontWeight:600}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px"}}>
+              <span style={{color:C.dimText,fontSize:11}}>From</span>
+              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+                style={{background:"transparent",border:"none",color:C.white,fontSize:12,outline:"none",colorScheme:"dark"}}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px"}}>
+              <span style={{color:C.dimText,fontSize:11}}>To</span>
+              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+                style={{background:"transparent",border:"none",color:C.white,fontSize:12,outline:"none",colorScheme:"dark"}}/>
+            </div>
+            {(dateFrom||dateTo)&&<button onClick={()=>{setDateFrom("");setDateTo("");fetchAll()}} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.negative,borderRadius:8,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>✕ Clear</button>}
+            <button onClick={()=>fetchAll(dateFrom?new Date(dateFrom):undefined,dateTo?new Date(dateTo):undefined)} disabled={loading} style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,color:loading?C.dimText:C.accent,borderRadius:8,padding:"6px 14px",fontSize:12,cursor:loading?"not-allowed":"pointer",fontWeight:600}}>
               {loading?"⟳ Syncing...":"⟳ Refresh"}
             </button>
             <div style={{display:"flex",gap:6,background:C.surfaceAlt,padding:4,borderRadius:10}}>
