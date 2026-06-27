@@ -925,21 +925,21 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
   const totalIn =months.map((_,i)=>Object.values(cashIn).reduce((s,a)=>s+(a[i]||0),0))
   const totalOut=months.map((_,i)=>Object.values(cashOut).reduce((s,a)=>s+(a[i]||0),0))
 
-  // ── BANK DATA PARSER — group by account_name, month-wise ──
+  // ── BANK DATA PARSER — detailed by transaction_details, grouped by type ──
   const parseBankData = () => {
     if(!bankRows||bankRows.length<2) return null
 
-    // Header: Month(0) Year(1) date(2) account_name(3) transaction_details(4) transaction_type(5) reference_number(6) entity_number(7) debit(8) credit(9) net_amount(10)
-    const header = bankRows[0]
+    const header   = bankRows[0]
     const monthIdx = header.findIndex(h=>h?.toLowerCase()==="month")
     const yearIdx  = header.findIndex(h=>h?.toLowerCase()==="year")
     const accIdx   = header.findIndex(h=>h?.toLowerCase()==="account_name")
+    const detIdx   = header.findIndex(h=>h?.toLowerCase()==="transaction_details")
     const txIdx    = header.findIndex(h=>h?.toLowerCase()==="transaction_type")
     const netIdx   = header.findIndex(h=>h?.toLowerCase()==="net_amount")
 
     if(accIdx===-1||netIdx===-1) return null
 
-    // Get all unique months sorted
+    // Collect unique months
     const monthSet = new Set<string>()
     for(let i=1;i<bankRows.length;i++){
       const r=bankRows[i]
@@ -948,58 +948,86 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
     }
     const sortedMonths = Array.from(monthSet).sort()
     const MN=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-    const mLabels = sortedMonths.map(ym=>{
-      const [y,m]=ym.split("-")
-      return `${MN[Number(m)]} ${String(y).slice(2)}`
-    })
+    const mLabels = sortedMonths.map(ym=>{ const [y,m]=ym.split("-"); return `${MN[Number(m)]} ${String(y).slice(2)}` })
 
-    // Group by account_name → month → sum net_amount
-    const groups: Record<string, Record<string,number>> = {}
-    const txTypes: Record<string,string> = {}
+    // Group: txType → particularName → month → sum
+    // particularName = transaction_details (for expenses) or account_name (for vendor/customer)
+    interface Entry { vals: Record<string,number>; txType: string; accName: string }
+    const entries: Record<string, Entry> = {}
 
     for(let i=1;i<bankRows.length;i++){
       const r=bankRows[i]
       const m=r[monthIdx]?.trim(), y=r[yearIdx]?.trim()
       if(!m||!y||isNaN(Number(m))||isNaN(Number(y))) continue
-      const ym=`${y}-${m.padStart(2,"0")}`
-      const acc=r[accIdx]?.trim()||"Unknown"
-      const tx=r[txIdx]?.trim()||""
-      const val=n(r[netIdx]||"0")
-      if(!groups[acc]) groups[acc]={}
-      groups[acc][ym]=(groups[acc][ym]||0)+val
-      if(!txTypes[acc]) txTypes[acc]=tx
+      const ym    = `${y}-${m.padStart(2,"0")}`
+      const txType= r[txIdx]?.trim()||""
+      const acc   = r[accIdx]?.trim()||"Unknown"
+      const det   = r[detIdx]?.trim()||acc
+      const val   = n(r[netIdx]||"0")
+      if(txType==="transfer_fund") continue // skip internal transfers
+
+      // Key: for customer_payment use account_name, for others use transaction_details
+      const key = txType==="customer_payment" ? acc : det
+      if(!entries[key]) entries[key]={vals:{},txType,accName:acc}
+      entries[key].vals[ym]=(entries[key].vals[ym]||0)+val
     }
 
-    // Separate into cash out (expenses/vendor) and cash in (customer)
-    const cashInKeys   = Object.keys(groups).filter(k=>txTypes[k]==="customer_payment")
-    const cashOutKeys  = Object.keys(groups).filter(k=>txTypes[k]!=="customer_payment"&&txTypes[k]!=="transfer_fund")
-
-    // Build rows
-    interface BR{label:string;vals:number[];type:string;isHeader?:boolean;isTotal?:boolean}
+    interface BR{label:string;subLabel?:string;vals:number[];type:string;txType:string;isHeader?:boolean;isTotal?:boolean;isSubtotal?:boolean}
     const rows:BR[]=[]
 
-    // Cash OUT section
-    rows.push({label:"CASH OUT — Expenses & Vendor Payments",vals:sortedMonths.map(ym=>cashOutKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)),type:"OUT",isHeader:true})
-    cashOutKeys.sort((a,b)=>{
-      const ta=txTypes[a]||"", tb=txTypes[b]||""
-      return ta.localeCompare(tb)||a.localeCompare(b)
+    // ── EXPENSES (direct debits, not vendor bills) ──
+    const expKeys    = Object.keys(entries).filter(k=>entries[k].txType==="expense"||entries[k].txType==="expense_refund")
+    const vendorKeys = Object.keys(entries).filter(k=>entries[k].txType==="vendor_payment")
+    const custKeys   = Object.keys(entries).filter(k=>entries[k].txType==="customer_payment")
+    const otherOutKeys = Object.keys(entries).filter(k=>!["expense","expense_refund","vendor_payment","customer_payment"].includes(entries[k].txType))
+
+    const sumKeys = (keys:string[], ym:string) => keys.reduce((s,k)=>s+(entries[k].vals[ym]||0),0)
+    const keyVals = (keys:string[]) => sortedMonths.map(ym=>sumKeys(keys,ym))
+
+    // Total cash out header
+    const allOutKeys = [...expKeys,...vendorKeys,...otherOutKeys]
+    rows.push({label:"TOTAL CASH OUT",vals:keyVals(allOutKeys),type:"OUT",txType:"out",isHeader:true})
+
+    // Expenses subtotal + details
+    if(expKeys.length>0){
+      rows.push({label:"Direct Expenses",vals:keyVals(expKeys),type:"OUT",txType:"expense",isSubtotal:true})
+      expKeys.sort((a,b)=>{
+        const ta=Math.abs(entries[b].vals[sortedMonths[sortedMonths.length-1]]||0)
+        const tb=Math.abs(entries[a].vals[sortedMonths[sortedMonths.length-1]]||0)
+        return ta-tb
+      }).forEach(k=>{
+        const v=keyVals([k])
+        if(v.some(x=>x!==0)) rows.push({label:k,vals:v,type:"EXPENSE",txType:"expense"})
+      })
+    }
+
+    // Vendor payments subtotal + details
+    if(vendorKeys.length>0){
+      rows.push({label:"Vendor Payments",vals:keyVals(vendorKeys),type:"OUT",txType:"vendor_payment",isSubtotal:true})
+      vendorKeys.sort((a,b)=>{
+        const sumA=entries[a].vals?Object.values(entries[a].vals).reduce((s,v)=>s+Math.abs(v),0):0
+        const sumB=entries[b].vals?Object.values(entries[b].vals).reduce((s,v)=>s+Math.abs(v),0):0
+        return sumB-sumA
+      }).forEach(k=>{
+        const v=keyVals([k])
+        if(v.some(x=>x!==0)) rows.push({label:k,vals:v,type:"VENDOR",txType:"vendor_payment"})
+      })
+    }
+
+    // Customer receipts
+    rows.push({label:"TOTAL CASH IN",vals:keyVals(custKeys),type:"IN",txType:"customer_payment",isHeader:true})
+    custKeys.sort((a,b)=>{
+      const sumA=Object.values(entries[a].vals).reduce((s,v)=>s+v,0)
+      const sumB=Object.values(entries[b].vals).reduce((s,v)=>s+v,0)
+      return sumB-sumA
     }).forEach(k=>{
-      rows.push({label:k,vals:sortedMonths.map(ym=>groups[k][ym]||0),type:txTypes[k]==="vendor_payment"?"VENDOR":"EXPENSE"})
+      const v=keyVals([k])
+      if(v.some(x=>x!==0)) rows.push({label:k,vals:v,type:"CUSTOMER",txType:"customer_payment"})
     })
 
-    // Cash IN section
-    rows.push({label:"CASH IN — Platform Receipts",vals:sortedMonths.map(ym=>cashInKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)),type:"IN",isHeader:true})
-    cashInKeys.sort().forEach(k=>{
-      rows.push({label:k,vals:sortedMonths.map(ym=>groups[k][ym]||0),type:"CUSTOMER"})
-    })
-
-    // Net row
-    const netVals=sortedMonths.map(ym=>{
-      const out=cashOutKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)
-      const inp=cashInKeys.reduce((s,k)=>s+(groups[k][ym]||0),0)
-      return inp+out // out is already negative
-    })
-    rows.push({label:"NET CASH FLOW",vals:netVals,type:"NET",isTotal:true})
+    // Net
+    const netVals=sortedMonths.map(ym=>sumKeys(custKeys,ym)+sumKeys(allOutKeys,ym))
+    rows.push({label:"NET CASH FLOW",vals:netVals,type:"NET",txType:"net",isTotal:true})
 
     return {mLabels,sortedMonths,rows,netVals}
   }
@@ -1129,22 +1157,34 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                 </thead>
                 <tbody>
                   {(bankData?bankData.rows:(wc as any)?.rows?.filter((r:any)=>!r.isCashBal)||[]).map((row:any,i:number)=>{
-                    const TCOLOR:Record<string,string>={"FIXED COST":C.negative,"VARIABLE":C.negative,"REIMBURSEMENT":"#D97706","VENDOR PAYMENT":C.negative,"VENDOR":C.negative,"EXPENSE":C.negative,"CUSTOMER RECEIPT":C.positive,"CUSTOMER":C.positive,"IN":C.positive,"OUT":C.negative,"NET":C.accent}
-                    const tc=TCOLOR[row.type]||C.neutral
-                    const isPos=row.type==="CUSTOMER RECEIPT"||row.type==="CUSTOMER"||row.type==="IN"
-                    const bgMap:Record<string,string>={"OUT":C.negativeDim,"IN":C.positiveDim,"NET":C.accentDim,"FIXED COST":C.negativeDim,"VARIABLE":C.negativeDim,"VENDOR PAYMENT":C.negativeDim,"CUSTOMER RECEIPT":C.positiveDim}
-                    const bg=row.isHeader||row.isTotal?bgMap[row.type]||C.surfaceAlt:"transparent"
-                    const stickyBg=row.isHeader||row.isTotal?bgMap[row.type]||C.surfaceAlt:C.bg
+                    const isPos  = row.type==="CUSTOMER"||row.type==="IN"
+                    const isOut  = row.type==="OUT"||row.type==="EXPENSE"||row.type==="VENDOR"
+                    const isNet  = row.type==="NET"
+                    const isSub  = row.isSubtotal
+                    const tc     = isNet?C.accent:isPos?C.positive:C.negative
+                    const indent = !row.isHeader&&!row.isTotal&&!isSub ? 16 : 0
+                    const bg     = isNet?C.accentDim:row.isHeader?(isPos?C.positiveDim:C.negativeDim):isSub?(isPos?"#16A34A0A":"#DC26260A"):"transparent"
+                    const stickyBg = isNet?C.accentDim:row.isHeader?(isPos?C.positiveDim:C.negativeDim):isSub?(isPos?"#16A34A0A":"#DC26260A"):C.bg
                     return (
-                      <tr key={i} style={{borderBottom:`1px solid ${row.isHeader||row.isTotal?C.border:C.border+"44"}`,background:bg}}>
-                        <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const}}>
-                          {(row.isHeader||row.isTotal)&&<Badge color={row.isTotal?C.accent:tc}>{row.isTotal?"NET":row.isHeader?(isPos?"IN":"OUT"):row.type.split(" ")[0]}</Badge>}
+                      <tr key={i} style={{borderBottom:`1px solid ${row.isHeader||isNet?C.border:C.border+"33"}`,background:bg}}>
+                        <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const,width:55}}>
+                          {row.isHeader&&<Badge color={tc}>{isPos?"IN":"OUT"}</Badge>}
+                          {isNet&&<Badge color={C.accent}>NET</Badge>}
+                          {isSub&&<span style={{color:tc,fontSize:8,fontWeight:700,letterSpacing:0.5}}>{isPos?"RECEIPTS":row.txType==="vendor_payment"?"VENDORS":"EXPENSES"}</span>}
                         </td>
-                        <td style={{padding:"5px 12px",position:"sticky" as const,left:55,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,color:row.isTotal?C.accent:row.isHeader?tc:C.white,fontWeight:row.isTotal||row.isHeader?700:400,whiteSpace:"nowrap" as const,fontSize:row.isTotal?11:10}}>
-                          {row.label}
+                        <td style={{padding:"5px 12px",paddingLeft:isSub?16:indent>0?24:12,position:"sticky" as const,left:55,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,whiteSpace:"nowrap" as const,fontSize:isNet||row.isHeader?11:isSub?10:10}}>
+                          <span style={{color:isNet?C.accent:row.isHeader?tc:isSub?tc:C.white,fontWeight:isNet||row.isHeader?800:isSub?700:400}}>
+                            {indent>0&&<span style={{color:C.dimText,marginRight:6}}>└</span>}
+                            {row.label}
+                          </span>
                         </td>
                         {row.vals.map((v:number,j:number)=>(
-                          <td key={j} style={{padding:"5px 10px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,color:v===0?C.dimText+"55":isPos?(v>0?C.positive:C.negative):(v<0?C.negative:C.positive),fontWeight:row.isTotal||row.isHeader?700:400,fontSize:row.isTotal?11:10,background:row.isTotal?(v>=0?C.positiveDim:C.negativeDim):"transparent"}}>
+                          <td key={j} style={{padding:"5px 10px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,
+                            color:v===0?C.dimText+"44":isPos?(v>0?C.positive:C.negative):(v<0?C.negative:C.positive),
+                            fontWeight:isNet||row.isHeader?800:isSub?700:400,
+                            fontSize:isNet||row.isHeader?11:10,
+                            background:isNet?(v>=0?C.positiveDim:C.negativeDim):"transparent",
+                            opacity:v===0?0.4:1}}>
                             {v===0?"—":v<0?`(${fmt(Math.abs(v),true)})`:fmt(v,true)}
                           </td>
                         ))}
