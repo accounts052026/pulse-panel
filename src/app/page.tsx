@@ -1149,9 +1149,10 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
       // Resolve via master — use account_name for vendors/customers, transaction_details for expenses
       const lookupKey = txType==="customer_payment"?acc:txType==="vendor_payment"?acc:det
       const info = getVendorInfo(lookupKey)
-      const key  = info.canonical // merge same entities
+      // For vendor_payment: if not found in master, use raw account_name as display
+      const key = info.canonical
 
-      if(!entries[key]) entries[key]={vals:{},txType,canonical:info.canonical,category:info.category,critical:info.critical}
+      if(!entries[key]) entries[key]={vals:{},txType,canonical:info.canonical,category:info.category||"OTHER",critical:info.critical}
       entries[key].vals[ym]=(entries[key].vals[ym]||0)+val
     }
 
@@ -1171,7 +1172,9 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
     rows.push({label:"TOTAL CASH OUT",canonical:"TOTAL CASH OUT",category:"",critical:"CRITICAL",vals:keyVals(outKeys),type:"OUT",txType:"out",isHeader:true})
 
     // Group by category in order
-    const outCategories = CATEGORY_ORDER.filter(cat=>cat!=="PLATFORM IN"&&outKeys.some(k=>entries[k].category===cat))
+    // Include OTHER for unmapped vendors/expenses
+    const allCats = [...new Set(outKeys.map(k=>entries[k].category))]
+    const outCategories = [...CATEGORY_ORDER.filter(cat=>cat!=="PLATFORM IN"&&allCats.includes(cat)), ...allCats.filter(c=>!CATEGORY_ORDER.includes(c)&&c!=="PLATFORM IN")]
     outCategories.forEach(cat=>{
       const catKeys = outKeys.filter(k=>entries[k].category===cat)
       if(catKeys.length===0) return
