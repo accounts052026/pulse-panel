@@ -1062,13 +1062,22 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
   return (
     <div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-        {view==="wc"&&wc?(
-          <>
-            <KpiCard label="Cash Balance" value={wc.cashBal?fmt(wc.cashBal.vals[0],true):"—"} sub="Current bank balance" color={C.positive}/>
-            <KpiCard label="Avg Monthly Net" value={wc.netRow?fmt(Math.abs(wc.netRow.vals.reduce((a,b)=>a+b,0)/wc.netRow.vals.length),true):"—"} sub={wc.netRow&&wc.netRow.vals.reduce((a,b)=>a+b,0)<0?"avg monthly deficit":"avg surplus"} color={wc.netRow&&wc.netRow.vals.reduce((a,b)=>a+b,0)<0?C.negative:C.positive}/>
-            <KpiCard label="Deficit Months" value={wc.netRow?`${wc.netRow.vals.filter(v=>v<0).length} / ${wc.nCols}`:"—"} sub="Months with cash burn" color={C.negative}/>
-            <KpiCard label="Best Month" value={wc.netRow?fmt(Math.max(...wc.netRow.vals),true):"—"} sub="Highest surplus month" color={C.positive}/>
-          </>
+        {view==="wc"&&(bankData||wc)?(
+          (()=>{
+            const netVals = bankData ? bankData.netVals : (wc as any)?.netRow?.vals || []
+            const nCols   = bankData ? bankData.mLabels.length : (wc as any)?.nCols || 0
+            const avgNet  = netVals.length ? netVals.reduce((a:number,b:number)=>a+b,0)/netVals.length : 0
+            const defMths = netVals.filter((v:number)=>v<0).length
+            const bestMth = netVals.length ? Math.max(...netVals) : 0
+            return (
+              <>
+                <KpiCard label="Avg Monthly Net" value={fmt(Math.abs(avgNet),true)} sub={avgNet<0?"avg monthly deficit":"avg monthly surplus"} color={avgNet>=0?C.positive:C.negative}/>
+                <KpiCard label="Deficit Months" value={`${defMths} / ${nCols}`} sub="Months with cash burn" color={defMths>6?C.negative:C.accent}/>
+                <KpiCard label="Best Month" value={fmt(bestMth,true)} sub="Highest surplus month" color={C.positive}/>
+                <KpiCard label="Worst Month" value={fmt(Math.abs(Math.min(...netVals,0)),true)} sub="Highest single month deficit" color={C.negative}/>
+              </>
+            )
+          })()
         ):(
           <>
             <KpiCard label="Avg Monthly Cash In" value={fmt(totalIn.length?totalIn.reduce((a,b)=>a+b,0)/totalIn.length:0,true)} sub="Platform receipts avg" color={C.positive}/>
@@ -1083,20 +1092,24 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
       </div>
 
       {/* ── WORKING CAPITAL VIEW ── */}
-      {view==="wc" && (!bankData&&!wc ? (
+      {view==="wc" && (!(bankData||wc) ? (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:40,textAlign:"center" as const,color:C.dimText}}>
           Working capital data loading... Click Refresh if this persists.
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column" as const,gap:12}}>
           {/* Bar chart */}
-          {wc.netRow&&wc.netRow.vals.length>0&&(
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
-              <div style={{color:C.white,fontWeight:700,fontSize:13,marginBottom:4}}>Monthly Net Cash Flow</div>
-              <div style={{color:C.dimText,fontSize:10,marginBottom:12}}>Cash receipts − Cash outflows (from bank data)</div>
-              <BarChart data={wc.netRow.vals.map((v,i)=>({label:wc.mLabels[i]?.substring(0,3)||`M${i+1}`,value:v}))} height={120}/>
-            </div>
-          )}
+          {(()=>{
+            const nv = bankData ? bankData.netVals : (wc as any)?.netRow?.vals || []
+            const ml = bankData ? bankData.mLabels : (wc as any)?.mLabels || []
+            return nv.length>0?(
+              <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+                <div style={{color:C.white,fontWeight:700,fontSize:13,marginBottom:4}}>Monthly Net Cash Flow</div>
+                <div style={{color:C.dimText,fontSize:10,marginBottom:12}}>Cash receipts − Cash outflows (from bank data)</div>
+                <BarChart data={nv.map((v:number,i:number)=>({label:ml[i]?.substring(0,3)||`M${i+1}`,value:v}))} height={120}/>
+              </div>
+            ):null
+          })()}
           {/* Full table */}
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
             <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt}}>
@@ -1109,28 +1122,28 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
                   <tr style={{background:C.surfaceAlt}}>
                     <th style={{padding:"8px 10px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,position:"sticky" as const,left:0,background:C.surfaceAlt,borderRight:`1px solid ${C.border}`,minWidth:55,zIndex:3,letterSpacing:1}}>TYPE</th>
                     <th style={{padding:"8px 12px",textAlign:"left" as const,color:C.dimText,fontWeight:700,fontSize:9,position:"sticky" as const,left:55,background:C.surfaceAlt,borderRight:`1px solid ${C.border}`,minWidth:180,zIndex:3,letterSpacing:1}}>PARTICULARS</th>
-                    {wc.mLabels.map((m,i)=>(
+                    {(bankData?bankData.mLabels:(wc as any)?.mLabels||[]).map((m:string,i:number)=>(
                       <th key={i} style={{padding:"8px 10px",textAlign:"right" as const,color:C.dimText,fontWeight:600,fontSize:9,minWidth:72,borderLeft:`1px solid ${C.border}`,whiteSpace:"nowrap" as const}}>{m}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {wc.rows.filter(r=>!r.isCashBal).map((row,i)=>{
-                    const TCOLOR:Record<string,string>={"FIXED COST":C.negative,"VARIABLE":C.negative,"REIMBURSEMENT":"#D97706","VENDOR PAYMENT":C.negative,"CUSTOMER RECEIPT":C.positive,"NET":C.accent,"BALANCE":C.neutral}
+                  {(bankData?bankData.rows:(wc as any)?.rows?.filter((r:any)=>!r.isCashBal)||[]).map((row:any,i:number)=>{
+                    const TCOLOR:Record<string,string>={"FIXED COST":C.negative,"VARIABLE":C.negative,"REIMBURSEMENT":"#D97706","VENDOR PAYMENT":C.negative,"VENDOR":C.negative,"EXPENSE":C.negative,"CUSTOMER RECEIPT":C.positive,"CUSTOMER":C.positive,"IN":C.positive,"OUT":C.negative,"NET":C.accent}
                     const tc=TCOLOR[row.type]||C.neutral
-                    const isPos=row.type==="CUSTOMER RECEIPT"
-                    const bgMap:Record<string,string>={"FIXED COST":C.negativeDim,"VARIABLE":C.negativeDim,"REIMBURSEMENT":"#D9770610","VENDOR PAYMENT":C.negativeDim,"CUSTOMER RECEIPT":C.positiveDim,"NET":C.accentDim}
+                    const isPos=row.type==="CUSTOMER RECEIPT"||row.type==="CUSTOMER"||row.type==="IN"
+                    const bgMap:Record<string,string>={"OUT":C.negativeDim,"IN":C.positiveDim,"NET":C.accentDim,"FIXED COST":C.negativeDim,"VARIABLE":C.negativeDim,"VENDOR PAYMENT":C.negativeDim,"CUSTOMER RECEIPT":C.positiveDim}
                     const bg=row.isHeader||row.isTotal?bgMap[row.type]||C.surfaceAlt:"transparent"
                     const stickyBg=row.isHeader||row.isTotal?bgMap[row.type]||C.surfaceAlt:C.bg
                     return (
                       <tr key={i} style={{borderBottom:`1px solid ${row.isHeader||row.isTotal?C.border:C.border+"44"}`,background:bg}}>
                         <td style={{padding:"5px 10px",position:"sticky" as const,left:0,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,verticalAlign:"middle" as const}}>
-                          {(row.isHeader||row.isTotal)&&<Badge color={row.isTotal?C.accent:tc}>{row.isTotal?"NET":row.type.split(" ")[0]}</Badge>}
+                          {(row.isHeader||row.isTotal)&&<Badge color={row.isTotal?C.accent:tc}>{row.isTotal?"NET":row.isHeader?(isPos?"IN":"OUT"):row.type.split(" ")[0]}</Badge>}
                         </td>
                         <td style={{padding:"5px 12px",position:"sticky" as const,left:55,background:stickyBg,borderRight:`1px solid ${C.border}`,zIndex:1,color:row.isTotal?C.accent:row.isHeader?tc:C.white,fontWeight:row.isTotal||row.isHeader?700:400,whiteSpace:"nowrap" as const,fontSize:row.isTotal?11:10}}>
                           {row.label}
                         </td>
-                        {row.vals.map((v,j)=>(
+                        {row.vals.map((v:number,j:number)=>(
                           <td key={j} style={{padding:"5px 10px",textAlign:"right" as const,borderLeft:`1px solid ${C.border}`,color:v===0?C.dimText+"55":isPos?(v>0?C.positive:C.negative):(v<0?C.negative:C.positive),fontWeight:row.isTotal||row.isHeader?700:400,fontSize:row.isTotal?11:10,background:row.isTotal?(v>=0?C.positiveDim:C.negativeDim):"transparent"}}>
                             {v===0?"—":v<0?`(${fmt(Math.abs(v),true)})`:fmt(v,true)}
                           </td>
