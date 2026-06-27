@@ -1146,10 +1146,12 @@ function CFTab({cfRows,wcRows,bankRows}:{cfRows:string[][];wcRows:string[][];ban
       const val    = n(r[netIdx]||"0")
       if(txType==="transfer_fund") continue
 
-      // Resolve via master — use account_name for vendors/customers, transaction_details for expenses
-      const lookupKey = txType==="customer_payment"?acc:txType==="vendor_payment"?acc:det
+      // Resolve via master:
+      // customer_payment → account_name = actual customer entity
+      // vendor_payment   → transaction_details = actual vendor name (account_name is just "HDFC A/c - 6379")
+      // expense          → transaction_details = expense category
+      const lookupKey = txType==="customer_payment" ? acc : det
       const info = getVendorInfo(lookupKey)
-      // For vendor_payment: if not found in master, use raw account_name as display
       const key = info.canonical
 
       if(!entries[key]) entries[key]={vals:{},txType,canonical:info.canonical,category:info.category||"OTHER",critical:info.critical}
