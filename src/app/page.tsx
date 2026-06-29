@@ -1537,15 +1537,17 @@ export default function Home() {
   const fetchAll = useCallback(async (from?: Date, to?: Date) => {
     setLoading(true); setError("")
     try {
-      // Fetch all platform tabs + CF sheet in parallel
+      // Fetch all platform tabs + CF sheet in parallel — no-store to bypass cache
+      const nc = {cache:"no-store" as const}
+      const cb = `&cachebust=${Date.now()}`
       const platformFetches = PLATFORMS.map(p =>
-        fetch(`${SHEET_BASE}?gid=${p.gid}&single=true&output=csv&t=${Date.now()}`)
+        fetch(`${SHEET_BASE}?gid=${p.gid}&single=true&output=csv${cb}`, nc)
           .then(r => r.text())
           .then(t => extractPlatformData(parseCSV(t), p.name, p.color, from, to))
       )
-      const cfFetch = fetch(`${CF_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
-      const wcFetch   = fetch(`${WC_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
-      const bankFetch = fetch(`${BANK_URL}&t=${Date.now()}`).then(r=>r.text()).then(t=>parseCSV(t))
+      const cfFetch   = fetch(`${CF_URL}${cb}`,   nc).then(r=>r.text()).then(t=>parseCSV(t))
+      const wcFetch   = fetch(`${WC_URL}${cb}`,   nc).then(r=>r.text()).then(t=>parseCSV(t))
+      const bankFetch = fetch(`${BANK_URL}${cb}`, nc).then(r=>r.text()).then(t=>parseCSV(t))
 
       setLoadingMsg(`Fetching ${PLATFORMS.length} platform tabs + cash flow...`)
       const [...results] = await Promise.all([...platformFetches, cfFetch, wcFetch, bankFetch])
