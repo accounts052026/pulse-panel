@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react"
 
 // ─── SHEET CONFIG ─────────────────────────────────────────────────────────────
-const SHEET_BASE = "https://docs.google.com/spreadsheets/d/1KaMP8JFauANorWYFVXl3CS9kOh7vPGfG3veiUZWAxPI/export?format=csv"
+const SHEET_BASE = "https://script.google.com/macros/s/AKfycbxW6n3tz1Mj68ycpr1K7lzTdLRHOf2ooO1-Xejsbux8aCrP2y5o9Ni473skf4miDRMyoQ/exec"
 const CF_URL     = "https://docs.google.com/spreadsheets/d/1ER1MAfSQ6QK4w3c4Qfvp_e_objfNq_0E6x8dQLDbIUg/export?format=csv"
 const WC_URL      = "https://docs.google.com/spreadsheets/d/1ER1MAfSQ6QK4w3c4Qfvp_e_objfNq_0E6x8dQLDbIUg/export?format=csv&gid=1354185061"
 const BANK_URL    = "https://docs.google.com/spreadsheets/d/1ER1MAfSQ6QK4w3c4Qfvp_e_objfNq_0E6x8dQLDbIUg/export?format=csv&gid=1112489118"
@@ -1541,7 +1541,7 @@ export default function Home() {
       const nc = {cache:"no-store" as const}
       const cb = `&cachebust=${Date.now()}`
       const platformFetches = PLATFORMS.map(p =>
-        fetch(`${SHEET_BASE}&gid=${p.gid}${cb}`, nc)
+        fetch(`${SHEET_BASE}?gid=${p.gid}&cachebust=${Date.now()}`, nc)
           .then(r => r.text())
           .then(t => extractPlatformData(parseCSV(t), p.name, p.color, from, to))
       )
