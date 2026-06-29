@@ -219,18 +219,25 @@ function getVendorInfo(name: string): VendorMaster {
 // ─── CSV PARSER ───────────────────────────────────────────────────────────────
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
-  for (const line of text.trim().split("\n")) {
-    const cols: string[] = []
-    let cur = "", inQ = false
-    for (const ch of line) {
-      if (ch === '"') { inQ = !inQ }
-      else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = "" }
-      else { cur += ch }
+  let cur = "", inQ = false
+  let row: string[] = []
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQ) {
+      if (ch === '"') {
+        if (text[i+1] === '"') { cur += '"'; i++ }  // escaped quote
+        else inQ = false
+      } else cur += ch
+    } else {
+      if (ch === '"') inQ = true
+      else if (ch === ',') { row.push(cur.trim()); cur = "" }
+      else if (ch === '\n') { row.push(cur.trim()); rows.push(row); row = []; cur = "" }
+      else if (ch === '\r') { /* skip */ }
+      else cur += ch
     }
-    cols.push(cur.trim())
-    rows.push(cols)
   }
-  return rows
+  if (cur !== "" || row.length > 0) { row.push(cur.trim()); rows.push(row) }
+  return rows.filter(r => r.length > 1 || (r.length === 1 && r[0] !== ""))
 }
 
 function n(s: string): number {
@@ -1629,7 +1636,7 @@ export default function Home() {
       </div>
 
       <div style={{borderTop:`1px solid ${C.border}`,padding:"12px 20px",textAlign:"center" as const,background:C.surfaceAlt}}>
-        <span style={{color:C.dimText,fontSize:10,letterSpacing:1}}>LIVE · {PLATFORMS.length} PLATFORM TABS · GOOGLE SHEETS · REFRESH ON LOAD</span>
+        <span style={{color:C.dimText,fontSize:10,letterSpacing:1}}>LIVE · {PLATFORMS.length} TABS · {platforms.length>0?`Blinkit Inv: ${fmt(platforms[0]?.invoice||0,true)}`:""} · {lastRefresh?lastRefresh.toLocaleTimeString():""}</span>
       </div>
     </div>
   )
