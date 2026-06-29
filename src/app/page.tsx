@@ -2,10 +2,10 @@
 import { useState, useEffect, useCallback } from "react"
 
 // ─── SHEET CONFIG ─────────────────────────────────────────────────────────────
-const SHEET_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQic7FAazD2oLAIGRxBT8QGyAbM9pChIruIhS8PtdtcBhuD8c9B0k0EbFG5_duCdkNksq_dxyRF8sM3/pub"
-const CF_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?output=csv"
-const WC_URL      = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?gid=1354185061&single=true&output=csv"
-const BANK_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2B28C8WnJefHbWfpn3B2lLG6fDn14sjeFOGRZqQ83Be0F5WUwU5LPm1Z1S0OLpNns6P_NgaSWIRsr/pub?gid=1112489118&single=true&output=csv"
+const SHEET_BASE = "https://docs.google.com/spreadsheets/d/1KaMP8JFauANorWYFVXl3CS9kOh7vPGfG3veiUZWAxPI/export?format=csv"
+const CF_URL     = "https://docs.google.com/spreadsheets/d/1ER1MAfSQ6QK4w3c4Qfvp_e_objfNq_0E6x8dQLDbIUg/export?format=csv"
+const WC_URL      = "https://docs.google.com/spreadsheets/d/1ER1MAfSQ6QK4w3c4Qfvp_e_objfNq_0E6x8dQLDbIUg/export?format=csv&gid=1354185061"
+const BANK_URL    = "https://docs.google.com/spreadsheets/d/1ER1MAfSQ6QK4w3c4Qfvp_e_objfNq_0E6x8dQLDbIUg/export?format=csv&gid=1112489118"
 
 const PLATFORMS = [
   { name: "Blinkit",   gid: "34243415",   color: "#F5A623" },
@@ -1541,13 +1541,13 @@ export default function Home() {
       const nc = {cache:"no-store" as const}
       const cb = `&cachebust=${Date.now()}`
       const platformFetches = PLATFORMS.map(p =>
-        fetch(`${SHEET_BASE}?gid=${p.gid}&single=true&output=csv${cb}`, nc)
+        fetch(`${SHEET_BASE}&gid=${p.gid}${cb}`, nc)
           .then(r => r.text())
           .then(t => extractPlatformData(parseCSV(t), p.name, p.color, from, to))
       )
-      const cfFetch   = fetch(`${CF_URL}${cb}`,   nc).then(r=>r.text()).then(t=>parseCSV(t))
-      const wcFetch   = fetch(`${WC_URL}${cb}`,   nc).then(r=>r.text()).then(t=>parseCSV(t))
-      const bankFetch = fetch(`${BANK_URL}${cb}`, nc).then(r=>r.text()).then(t=>parseCSV(t))
+      const cfFetch   = fetch(`${CF_URL}&cachebust=${Date.now()}`,   nc).then(r=>r.text()).then(t=>parseCSV(t))
+      const wcFetch   = fetch(`${WC_URL}&cachebust=${Date.now()}`,   nc).then(r=>r.text()).then(t=>parseCSV(t))
+      const bankFetch = fetch(`${BANK_URL}&cachebust=${Date.now()}`, nc).then(r=>r.text()).then(t=>parseCSV(t))
 
       setLoadingMsg(`Fetching ${PLATFORMS.length} platform tabs + cash flow...`)
       const [...results] = await Promise.all([...platformFetches, cfFetch, wcFetch, bankFetch])
