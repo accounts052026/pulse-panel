@@ -203,6 +203,7 @@ const CRITICAL_COLOR: Record<Criticality, string> = {
 const CRITICAL_LABEL: Record<Criticality, string> = {
   "CRITICAL": "Must Pay", "MEDIUM": "Important", "LOW": "Optional",
   "ONE-TIME": "One-Time", "BAND": "Closed",
+
   "SWIGGY LIMITED":                        {canonical:"Swiggy (Marketing)",              category:"MARKETING",     critical:"MEDIUM"},
   "Pooja Siddique":                        {canonical:"Pooja Siddique (Consultant)",     category:"PROFESSIONAL",  critical:"LOW"},
   "Hoookd Media":                          {canonical:"Hookd Media (Marketing)",         category:"MARKETING",     critical:"LOW"},
