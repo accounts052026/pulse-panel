@@ -15,6 +15,26 @@ export function getNeon() {
   return _sql
 }
 
+// ── Result-shape normaliser ──────────────────────────────────────
+// The Neon serverless driver returns EITHER a bare array of row objects
+// OR a FullQueryResults object with a `.rows` property, depending on the
+// call form and driver version. Code that assumed "always an array" broke
+// in two nasty ways:
+//   - `for (const r of rows)` throws "not iterable" on the object form.
+//     Where that sat inside a try/catch returning {} on failure (as the
+//     entity_mapping readers did), the mapping silently came back EMPTY —
+//     which is why saved mappings never appeared anywhere in the UI even
+//     though the rows were sitting in the table.
+//   - `.map()` / `.length` silently misbehave on the object form.
+// Every read should go through this instead of casting.
+export function rowsOf<T>(res: unknown): T[] {
+  if (Array.isArray(res)) return res as T[]
+  if (res && typeof res === "object" && Array.isArray((res as { rows?: unknown }).rows)) {
+    return (res as { rows: T[] }).rows
+  }
+  return []
+}
+
 // ── Types ─────────────────────────────────────────────────────
 
 export interface MonthlyPlatformSummary {

@@ -1,89 +1,30 @@
 "use client"
 import { useEffect, useState } from "react"
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import { C, fmt, fmtFull, pct, Sidebar } from "@/lib/dashboard-ui"
 
-const DONUT_COLORS = ["#FF6B35", "#F5A623", "#8B5CF6", "#60A5FA", "#22C55E", "#EC4899", "#14B8A6", "#94A3B8"]
-
 interface PlatformRow { name: string; total: number; overdue: number; count: number; pct: number }
-interface PlatformsData { receivablesByPlatform: PlatformRow[]; payablesByPlatform: PlatformRow[]; asOf: string }
-
-function PlatformDonut({ title, rows }: { title: string; rows: PlatformRow[] }) {
-  const total = rows.reduce((s, r) => s + r.total, 0)
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 1, minWidth: 340, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>{title}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ width: 150, height: 150, position: "relative", flexShrink: 0 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={rows} dataKey="total" nameKey="name" innerRadius={45} outerRadius={70} paddingAngle={1} strokeWidth={0}>
-                {rows.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v: number) => fmtFull(v)} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>{fmt(total)}</div>
-            <div style={{ fontSize: 9, color: C.dim }}>Total</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 11, flex: 1 }}>
-          {rows.map((r, i) => (
-            <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 4, background: DONUT_COLORS[i % DONUT_COLORS.length], flexShrink: 0 }} />
-                <span style={{ color: C.dim }}>{r.name}</span>
-              </div>
-              <span style={{ fontWeight: 600 }}>{fmt(r.total)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
+interface CombinedRow {
+  name: string
+  receivable: number; receivableOverdue: number; receivableCount: number
+  payable: number; payableOverdue: number; payableCount: number
+  net: number
+}
+interface PlatformsData {
+  receivablesByPlatform: PlatformRow[]
+  payablesByPlatform: PlatformRow[]
+  combined: CombinedRow[]
+  asOf: string
 }
 
-function PlatformTable({ title, rows }: { title: string; rows: PlatformRow[] }) {
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0)
-  const grandOverdue = rows.reduce((s, r) => s + r.overdue, 0)
+type SortKey = "name" | "receivable" | "payable" | "net"
+
+function StatCard({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>{title}</div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-        <thead>
-          <tr style={{ color: C.dim, textAlign: "left" as const }}>
-            <th style={{ padding: "4px 8px 8px", fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Platform</th>
-            <th style={{ padding: "4px 8px 8px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Open Docs</th>
-            <th style={{ padding: "4px 8px 8px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Total (₹)</th>
-            <th style={{ padding: "4px 8px 8px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Overdue (₹)</th>
-            <th style={{ padding: "4px 8px 8px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>% Overdue</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && <tr><td colSpan={5} style={{ padding: "16px 8px", textAlign: "center" as const, color: C.dim }}>No data yet</td></tr>}
-          {rows.map(r => (
-            <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
-              <td style={{ padding: "9px 8px", fontWeight: 600 }}>{r.name}</td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const }}>{r.count}</td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const }}>{fmtFull(r.total)}</td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const }}>{pct(r.pct)}</td>
-            </tr>
-          ))}
-        </tbody>
-        {rows.length > 0 && (
-          <tfoot>
-            <tr style={{ borderTop: `2px solid ${C.border}`, fontWeight: 700 }}>
-              <td style={{ padding: "10px 8px" }}>Total</td>
-              <td />
-              <td style={{ padding: "10px 8px", textAlign: "right" as const }}>{fmtFull(grandTotal)}</td>
-              <td style={{ padding: "10px 8px", textAlign: "right" as const, color: C.red }}>{fmtFull(grandOverdue)}</td>
-              <td style={{ padding: "10px 8px", textAlign: "right" as const }}>{pct(grandTotal ? (grandOverdue / grandTotal) * 100 : 0)}</td>
-            </tr>
-          </tfoot>
-        )}
-      </table>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 18px", flex: 1, minWidth: 190, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: C.dim, textTransform: "uppercase" as const, marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: color ?? C.text, letterSpacing: -0.4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: C.dim, marginTop: 5 }}>{sub}</div>}
     </div>
   )
 }
@@ -92,7 +33,9 @@ export default function PlatformsPage() {
   const [data, setData] = useState<PlatformsData | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<"receivables" | "payables">("receivables")
+  const [search, setSearch] = useState("")
+  const [sortKey, setSortKey] = useState<SortKey>("receivable")
+  const [hideEmpty, setHideEmpty] = useState(true)
 
   useEffect(() => {
     fetch("/api/zoho/platforms", { cache: "no-store" })
@@ -102,37 +45,144 @@ export default function PlatformsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const rows = (data?.combined ?? [])
+    .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(r => !hideEmpty || r.receivable !== 0 || r.payable !== 0)
+    .sort((a, b) => {
+      if (sortKey === "name") return a.name.localeCompare(b.name)
+      if (sortKey === "net") return b.net - a.net
+      return (b[sortKey] as number) - (a[sortKey] as number)
+    })
+
+  const totalReceivable = rows.reduce((s, r) => s + r.receivable, 0)
+  const totalPayable = rows.reduce((s, r) => s + r.payable, 0)
+
+  const chartData = rows.slice(0, 8).map(r => ({ name: r.name, Receivable: r.receivable, Payable: r.payable }))
+
+  const th = (label: string, key: SortKey, align: "left" | "right" = "right") => (
+    <th
+      onClick={() => setSortKey(key)}
+      style={{
+        padding: "10px 12px", textAlign: align, fontSize: 10, letterSpacing: 0.5,
+        textTransform: "uppercase" as const, fontWeight: 700, cursor: "pointer",
+        color: sortKey === key ? C.text : C.dim, whiteSpace: "nowrap" as const,
+      }}
+    >
+      {label}{sortKey === key ? " ↓" : ""}
+    </th>
+  )
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", color: C.text }}>
       <Sidebar active="platforms" />
-      <main style={{ flex: 1, padding: "24px 28px", maxWidth: 1200 }}>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: -0.4 }}>Platforms</div>
-          <div style={{ fontSize: 13, color: C.dim, marginTop: 3 }}>
-            Zoho AR/AP grouped by marketplace, matched from vendor/customer names against known platform aliases (Blinkit, Swiggy, Zepto, Amazon, BigBasket, and more)
+      <main style={{ flex: 1, padding: "28px 32px", maxWidth: 1280 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+          <div>
+            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.5 }}>Platforms</div>
+            <div style={{ fontSize: 13, color: C.dim, marginTop: 4, maxWidth: 720, lineHeight: 1.5 }}>
+              Receivables and payables side by side for every platform. Entities are grouped using your Entity Master
+              mapping first, falling back to built-in name matching for anything not yet mapped.
+            </div>
           </div>
+          <input
+            placeholder="Search platform…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 13px", fontSize: 13, minWidth: 220, background: C.surface }}
+          />
         </div>
 
         {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>Loading…</div>}
         {error && <div style={{ background: C.redDim, border: `1px solid ${C.red}33`, borderRadius: 10, padding: "12px 16px", color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
         {data && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", gap: 4, background: "#F1F3F7", padding: 3, borderRadius: 8, width: "fit-content" }}>
-              <button onClick={() => setTab("receivables")} style={{ background: tab === "receivables" ? C.surface : "transparent", boxShadow: tab === "receivables" ? "0 1px 2px rgba(0,0,0,0.08)" : "none", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, color: tab === "receivables" ? C.blue : C.dim }}>Receivables (sales via platforms)</button>
-              <button onClick={() => setTab("payables")} style={{ background: tab === "payables" ? C.surface : "transparent", boxShadow: tab === "payables" ? "0 1px 2px rgba(0,0,0,0.08)" : "none", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, color: tab === "payables" ? C.red : C.dim }}>Payables (fees/logistics to platforms)</button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <StatCard label="Total Receivable" value={fmt(totalReceivable)} color={C.green} sub={`${rows.length} platforms`} />
+              <StatCard label="Total Payable" value={fmt(totalPayable)} color={C.red} />
+              <StatCard label="Net Position" value={fmt(totalReceivable - totalPayable)} color={totalReceivable - totalPayable >= 0 ? C.green : C.red} sub="Receivable minus payable" />
             </div>
-            {tab === "receivables" ? (
-              <>
-                <PlatformDonut title="Receivables by Platform" rows={data.receivablesByPlatform} />
-                <PlatformTable title="Receivables by Platform — Detail" rows={data.receivablesByPlatform} />
-              </>
-            ) : (
-              <>
-                <PlatformDonut title="Payables by Platform" rows={data.payablesByPlatform} />
-                <PlatformTable title="Payables by Platform — Detail" rows={data.payablesByPlatform} />
-              </>
-            )}
+
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Receivable vs Payable by Platform</div>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.dim }} stroke={C.border} interval={0} angle={-15} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 11, fill: C.dim }} stroke={C.border} tickFormatter={v => fmt(v)} />
+                  <Tooltip formatter={(v: number) => fmtFull(v)} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Receivable" fill={C.green} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Payable" fill={C.red} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Platform Detail</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.dim, cursor: "pointer" }}>
+                  <input type="checkbox" checked={hideEmpty} onChange={e => setHideEmpty(e.target.checked)} />
+                  Hide platforms with no open balance
+                </label>
+              </div>
+              <div style={{ overflowX: "auto" as const }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
+                  <thead>
+                    <tr style={{ background: "#F8FAFC" }}>
+                      {th("Platform", "name", "left")}
+                      {th("Receivable", "receivable")}
+                      <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, fontWeight: 700, color: C.dim }}>R. Overdue</th>
+                      {th("Payable", "payable")}
+                      <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, fontWeight: 700, color: C.dim }}>P. Overdue</th>
+                      {th("Net", "net")}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 && (
+                      <tr><td colSpan={6} style={{ padding: "20px 12px", textAlign: "center" as const, color: C.dim }}>No platforms found</td></tr>
+                    )}
+                    {rows.map(r => (
+                      <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
+                        <td style={{ padding: "11px 12px", fontWeight: 600 }}>
+                          {r.name}
+                          <div style={{ fontSize: 10, color: C.dim, fontWeight: 500, marginTop: 2 }}>
+                            {r.receivableCount + r.payableCount} open docs
+                          </div>
+                        </td>
+                        <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.receivable ? C.text : C.dim }}>{r.receivable ? fmtFull(r.receivable) : "—"}</td>
+                        <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.receivableOverdue ? C.red : C.dim }}>
+                          {r.receivableOverdue ? fmtFull(r.receivableOverdue) : "—"}
+                          {r.receivable > 0 && r.receivableOverdue > 0 && (
+                            <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{pct((r.receivableOverdue / r.receivable) * 100)}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.payable ? C.text : C.dim }}>{r.payable ? fmtFull(r.payable) : "—"}</td>
+                        <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.payableOverdue ? C.red : C.dim }}>
+                          {r.payableOverdue ? fmtFull(r.payableOverdue) : "—"}
+                          {r.payable > 0 && r.payableOverdue > 0 && (
+                            <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{pct((r.payableOverdue / r.payable) * 100)}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: "11px 12px", textAlign: "right" as const, fontWeight: 700, color: r.net >= 0 ? C.green : C.red }}>{fmtFull(r.net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {rows.length > 0 && (
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${C.border}`, fontWeight: 700, background: "#FAFBFD" }}>
+                        <td style={{ padding: "12px" }}>Total</td>
+                        <td style={{ padding: "12px", textAlign: "right" as const }}>{fmtFull(totalReceivable)}</td>
+                        <td style={{ padding: "12px", textAlign: "right" as const, color: C.red }}>{fmtFull(rows.reduce((s, r) => s + r.receivableOverdue, 0))}</td>
+                        <td style={{ padding: "12px", textAlign: "right" as const }}>{fmtFull(totalPayable)}</td>
+                        <td style={{ padding: "12px", textAlign: "right" as const, color: C.red }}>{fmtFull(rows.reduce((s, r) => s + r.payableOverdue, 0))}</td>
+                        <td style={{ padding: "12px", textAlign: "right" as const, color: totalReceivable - totalPayable >= 0 ? C.green : C.red }}>{fmtFull(totalReceivable - totalPayable)}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </main>

@@ -2,33 +2,13 @@ import { NextResponse } from "next/server"
 import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
-  getLastSyncedAt,
+  getLastSyncedAt, getEntityMapping, canonical,
 } from "@/lib/zoho-store"
-import { getNeon } from "@/lib/neon"
 
 export const dynamic = "force-dynamic"
-
-async function getMapping(): Promise<Record<string, string>> {
-  try {
-    const sql = getNeon()
-    await sql`
-      CREATE TABLE IF NOT EXISTS entity_mapping (
-        entity_name    TEXT PRIMARY KEY,
-        canonical_name TEXT NOT NULL,
-        side           TEXT NOT NULL,
-        updated_at     TIMESTAMPTZ DEFAULT NOW()
-      )
-    `
-    const rows = await sql`SELECT entity_name, canonical_name FROM entity_mapping`
-    const map: Record<string, string> = {}
-    for (const r of rows as unknown as { entity_name: string; canonical_name: string }[]) {
-      map[r.entity_name] = r.canonical_name
-    }
-    return map
-  } catch {
-    return {} // mapping is optional — dashboard still works with raw Zoho names if Neon is unreachable
-  }
-}
+// Reading ~23k invoices back out of Neon takes many round trips; the
+// default 10s serverless budget was not enough headroom.
+export const maxDuration = 60
 
 interface AgeingBucket { label: string; amount: number }
 
@@ -55,8 +35,7 @@ function isOverdue(due_date: string, balance: number) {
 function topByEntity<T extends { balance: number }>(items: T[], nameKey: keyof T, mapping: Record<string, string>, n = 5) {
   const map: Record<string, { total: number; overdue: number }> = {}
   for (const it of items) {
-    const raw  = String(it[nameKey] ?? "Unknown")
-    const name = mapping[raw] ?? raw
+    const name = canonical(it[nameKey] as unknown as string, mapping)
     if (!map[name]) map[name] = { total: 0, overdue: 0 }
     map[name].total += it.balance
     if (isOverdue((it as any).due_date, it.balance)) map[name].overdue += it.balance
@@ -73,7 +52,7 @@ function monthKey(d: string) { return d?.slice(0, 7) ?? "Unknown" }
 export async function GET() {
   try {
     const [invoices, bills, expenses, bankAccounts, mapping] = await Promise.all([
-      getInvoices(), getBills(), getExpenses(), getBankAccounts(), getMapping(),
+      getInvoices(), getBills(), getExpenses(), getBankAccounts(), getEntityMapping(),
     ])
 
     // ── KPI totals ──────────────────────────────────────────────
@@ -121,13 +100,13 @@ export async function GET() {
       .filter(b => isOverdue(b.due_date, b.balance))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 10)
-      .map(b => ({ doc_no: b.bill_number, party: mapping[b.vendor_name] ?? b.vendor_name, due_date: b.due_date, overdue: b.balance, side: "payable" as const }))
+      .map(b => ({ doc_no: b.bill_number, party: canonical(b.vendor_name, mapping), due_date: b.due_date, overdue: b.balance, side: "payable" as const }))
 
     const overdueInvoices = invoices
       .filter(i => isOverdue(i.due_date, i.balance))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 10)
-      .map(i => ({ doc_no: i.invoice_number, party: mapping[i.customer_name] ?? i.customer_name, due_date: i.due_date, overdue: i.balance, side: "receivable" as const }))
+      .map(i => ({ doc_no: i.invoice_number, party: canonical(i.customer_name, mapping), due_date: i.due_date, overdue: i.balance, side: "receivable" as const }))
 
     // ── Trend — last 6 months ────────────────────────────────────
     const months: string[] = []

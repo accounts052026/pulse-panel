@@ -5,7 +5,7 @@
 // non-JSON platform error page), each module gets its own table and its
 // own short sync call. Rows are upserted in batches.
 
-import { getNeon } from "./neon"
+import { getNeon, rowsOf } from "./neon"
 import { ZOHO_MODULE_CONFIG, zohoFetchOnePage } from "./zoho"
 
 export const ZOHO_MODULES = [
@@ -259,6 +259,47 @@ export async function getLastSyncedAt(): Promise<string | null> {
   return (rows as unknown as { synced_at: string | null }[])[0]?.synced_at ?? null
 }
 
+// ── Entity mapping (canonical / platform names) ─────────────────
+//
+// THE single source of truth for entity→platform name resolution. Every
+// route previously carried its own private copy of this function, each
+// with a `catch { return {} }` that swallowed failures — so a mapping
+// could silently apply on one screen and not another, or (via the
+// rowsOf-shape bug) nowhere at all while still reporting success.
+//
+// Purpose: one platform trades under many legal entity names (Blinkit
+// alone bills as "Blink Commerce Private Limited", "Moonstone Ventures
+// LLP", "Asvah Retail Private Limited", …). Mapping them all to a single
+// canonical platform name is what makes the numbers decision-ready —
+// so this MUST be applied consistently in every view, not just some.
+export async function getEntityMapping(): Promise<Record<string, string>> {
+  const sql = getNeon()
+  await sql`
+    CREATE TABLE IF NOT EXISTS entity_mapping (
+      entity_name    TEXT PRIMARY KEY,
+      canonical_name TEXT NOT NULL,
+      side           TEXT NOT NULL,
+      updated_at     TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+  const res = await sql`SELECT entity_name, canonical_name FROM entity_mapping`
+  const map: Record<string, string> = {}
+  for (const r of rowsOf<{ entity_name: string; canonical_name: string }>(res)) {
+    map[r.entity_name] = r.canonical_name
+    // Also index a trimmed/case-normalised form so a mapping still applies
+    // when Zoho returns the same party with stray whitespace or different
+    // casing than the row the user actually edited.
+    map[r.entity_name.trim().toLowerCase()] = r.canonical_name
+  }
+  return map
+}
+
+// Resolve a raw Zoho party name to its canonical/platform name.
+export function canonical(raw: string | null | undefined, mapping: Record<string, string>): string {
+  const name = (raw ?? "").trim() || "Unknown"
+  return mapping[name] ?? mapping[name.toLowerCase()] ?? name
+}
+
 // ── Typed readers used by the dashboard/entities/entity-snapshot routes ──
 //
 // IMPORTANT: Postgres NUMERIC columns come back from the Neon serverless
@@ -278,26 +319,44 @@ const num = (v: unknown): number => {
 // a 5-column subset, returned all 2000 rows fine; only the full 8-column
 // query came back empty). Pagination with LIMIT/OFFSET keeps each query's
 // result small enough to avoid whatever size threshold triggers this.
-const PAGE = 300
+const PAGE = 500
 
+// Count-driven pagination.
+//
+// The previous version looped `while (true)` and did `if (page.length <
+// PAGE) break`. That treats ANY short or empty page as "end of table" —
+// so a single transient short response from the driver silently truncated
+// the result and the caller had no way to tell. On zoho_invoices (22,751
+// rows = ~46 pages) that meant the dashboard could quietly sum only part
+// of the table and report receivables well under the real Zoho total,
+// with no error anywhere. Payables (3,389 rows) is small enough that it
+// usually completed before hitting the problem, which is exactly why
+// payables matched Zoho while receivables didn't.
+//
+// Now we read COUNT(*) first and page until we've actually collected that
+// many rows, retrying a spurious empty page once and then failing LOUDLY
+// rather than under-reporting financial totals.
 async function fetchPaged<T>(pk: string, table: string, columns: string): Promise<T[]> {
   const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<any>
+
+  // Table/column names here are fixed internal constants (never user input),
+  // so building the query text directly is safe; only LIMIT/OFFSET are
+  // interpolated as real bound parameters ($1/$2).
+  const total = rowsOf<{ n: number }>(await sql(`SELECT COUNT(*)::int AS n FROM ${table}`))[0]?.n ?? 0
   const out: T[] = []
-  let offset = 0
-  while (true) {
-    // Table/column names here are fixed internal constants (never user input),
-    // so building the query text directly is safe; only LIMIT/OFFSET are
-    // interpolated as real bound parameters ($1/$2), same as the tagged-
-    // template form but via the driver's function-call form instead.
-    const rows = (await sql(
-      `SELECT ${columns} FROM ${table} ORDER BY ${pk} LIMIT $1 OFFSET $2`,
-      [PAGE, offset]
-    )) as T[]
-    const page = Array.isArray(rows) ? rows : (rows as any).rows ?? []
+
+  for (let offset = 0; offset < total; offset += PAGE) {
+    const q = `SELECT ${columns} FROM ${table} ORDER BY ${pk} LIMIT $1 OFFSET $2`
+    let page = rowsOf<T>(await sql(q, [PAGE, offset]))
+    if (page.length === 0) {
+      page = rowsOf<T>(await sql(q, [PAGE, offset])) // one retry
+      if (page.length === 0) {
+        throw new Error(`fetchPaged: ${table} returned 0 rows at offset ${offset} of ${total} — refusing to return truncated data`)
+      }
+    }
     out.push(...page)
-    if (page.length < PAGE) break
-    offset += PAGE
   }
+
   return out
 }
 

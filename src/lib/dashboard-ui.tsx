@@ -57,9 +57,9 @@ export function Icon({ name, size = 15 }: { name: string; size?: number }) {
 }
 
 export const NAV = [
-  { key: "overview",    label: "Overview",         icon: "overview",   href: "/dashboard#top" },
-  { key: "payables",    label: "Payables",         icon: "payables",   href: "/dashboard#payables" },
-  { key: "receivables", label: "Receivables",      icon: "receivables",href: "/dashboard#receivables" },
+  { key: "overview",    label: "Overview",         icon: "overview",   href: "/dashboard" },
+  { key: "payables",    label: "Payables",         icon: "payables",   href: "/dashboard/payables" },
+  { key: "receivables", label: "Receivables",      icon: "receivables",href: "/dashboard/receivables" },
   { key: "expenses",    label: "Expenses",         icon: "expenses",   href: "/dashboard#expenses" },
   { key: "ageing",      label: "Ageing Analysis",  icon: "ageing",     href: "/dashboard/ageing" },
   { key: "cashflow",    label: "Cash Flow",        icon: "cashflow",   href: "/dashboard/cashflow" },

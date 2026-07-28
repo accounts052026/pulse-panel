@@ -1,28 +1,8 @@
 import { NextResponse } from "next/server"
-import { getCachedInvoices as getInvoices, getCachedBills as getBills, getLastSyncedAt } from "@/lib/zoho-store"
-import { getNeon } from "@/lib/neon"
+import { getCachedInvoices as getInvoices, getCachedBills as getBills, getLastSyncedAt, getEntityMapping, canonical } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
-
-async function getMapping(): Promise<Record<string, string>> {
-  try {
-    const sql = getNeon()
-    await sql`
-      CREATE TABLE IF NOT EXISTS entity_mapping (
-        entity_name    TEXT PRIMARY KEY,
-        canonical_name TEXT NOT NULL,
-        side           TEXT NOT NULL,
-        updated_at     TIMESTAMPTZ DEFAULT NOW()
-      )
-    `
-    const rows = await sql`SELECT entity_name, canonical_name FROM entity_mapping`
-    const map: Record<string, string> = {}
-    for (const r of rows as unknown as { entity_name: string; canonical_name: string }[]) map[r.entity_name] = r.canonical_name
-    return map
-  } catch {
-    return {}
-  }
-}
+export const maxDuration = 60
 
 const BUCKETS = ["0 - 30 Days", "31 - 60 Days", "61 - 90 Days", "91 - 120 Days", "> 120 Days"] as const
 
@@ -39,8 +19,7 @@ function entityAgeing<T extends { balance: number; due_date: string }>(items: T[
   const map: Record<string, Record<string, number>> = {}
   for (const it of items) {
     if (!it.balance) continue
-    const raw = String(it[nameKey] ?? "Unknown")
-    const name = mapping[raw] ?? raw
+    const name = canonical(it[nameKey] as unknown as string, mapping)
     const days = Math.floor((today.getTime() - new Date(it.due_date).getTime()) / 86_400_000)
     const bucket = bucketFor(days)
     if (!map[name]) map[name] = Object.fromEntries(BUCKETS.map(b => [b, 0]))
@@ -54,7 +33,7 @@ function entityAgeing<T extends { balance: number; due_date: string }>(items: T[
 
 export async function GET() {
   try {
-    const [invoices, bills, mapping] = await Promise.all([getInvoices(), getBills(), getMapping()])
+    const [invoices, bills, mapping] = await Promise.all([getInvoices(), getBills(), getEntityMapping()])
     return NextResponse.json({
       buckets: BUCKETS,
       payables: entityAgeing(bills, "vendor_name", mapping),

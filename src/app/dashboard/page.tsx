@@ -71,14 +71,14 @@ function KpiCard({ icon, iconBg, iconColor, label, value, sub, subValue, subColo
       <div style={{ fontSize: 12, color: C.dim, marginTop: 6 }}>
         {sub}{subValue && <span style={{ color: subColor || C.dim, fontWeight: 700 }}> {subValue}</span>}
       </div>
-      <a href={link === "cashflow" ? "/dashboard/cashflow" : `#${link}`} style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 10, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+      <a href={link === "expenses" ? "#expenses" : `/dashboard/${link}`} style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 10, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
         {link === "cashflow" ? "View cash flow" : `View ${link}`} <span>→</span>
       </a>
     </div>
   )
 }
 
-function DonutCard({ title, data, total, linkId }: { title: string; data: { label: string; amount: number }[]; total: number; linkId: string }) {
+function DonutCard({ title, data, total, linkId, href }: { title: string; data: { label: string; amount: number }[]; total: number; linkId: string; href: string }) {
   const chartData = data.filter(d => d.amount > 0)
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 1, minWidth: 300, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }} id={linkId}>
@@ -110,20 +110,20 @@ function DonutCard({ title, data, total, linkId }: { title: string; data: { labe
           ))}
         </div>
       </div>
-      <a href="/dashboard/entities" style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 12, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>View details <span>→</span></a>
+      <a href={href} style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 12, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>View details <span>→</span></a>
     </div>
   )
 }
 
-function TopEntityTable({ title, rows, entityLabel, linkId }:
-  { title: string; rows: { name: string; total: number; overdue: number; pct: number }[]; entityLabel: string; linkId: string }) {
+function TopEntityTable({ title, rows, entityLabel, linkId, href }:
+  { title: string; rows: { name: string; total: number; overdue: number; pct: number }[]; entityLabel: string; linkId: string; href: string }) {
   const grandTotal = rows.reduce((s, r) => s + r.total, 0)
   const grandOverdue = rows.reduce((s, r) => s + r.overdue, 0)
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 1, minWidth: 360, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }} id={linkId}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
-        <a href="/dashboard/entities" style={{ fontSize: 11, color: C.blue, fontWeight: 600, textDecoration: "none" }}>View all →</a>
+        <a href={href} style={{ fontSize: 11, color: C.blue, fontWeight: 600, textDecoration: "none" }}>View all →</a>
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
@@ -357,15 +357,15 @@ export default function ZohoDashboard() {
 
             {/* Ageing donuts + expense category */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <DonutCard title="Payables by Ageing" data={data.payablesAgeing} total={data.kpis.totalPayables} linkId="payables" />
-              <DonutCard title="Receivables by Ageing" data={data.receivablesAgeing} total={data.kpis.totalReceivables} linkId="receivables" />
-              <DonutCard title="Expenses by Category (MTD)" data={data.expenseByCategory} total={data.kpis.expensesThisMonth} linkId="expenses" />
+              <DonutCard title="Payables by Ageing" data={data.payablesAgeing} total={data.kpis.totalPayables} linkId="payables" href="/dashboard/ageing" />
+              <DonutCard title="Receivables by Ageing" data={data.receivablesAgeing} total={data.kpis.totalReceivables} linkId="receivables" href="/dashboard/ageing" />
+              <DonutCard title="Expenses by Category (MTD)" data={data.expenseByCategory} total={data.kpis.expensesThisMonth} linkId="expenses" href="/dashboard/reports" />
             </div>
 
             {/* Top vendor/customer tables + overdue */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <TopEntityTable title="Payables by Vendor (Top 5)" rows={data.payablesByVendor.top} entityLabel="Vendor" linkId="payables-vendor" />
-              <TopEntityTable title="Receivables by Customer (Top 5)" rows={data.receivablesByCustomer.top} entityLabel="Customer" linkId="receivables-customer" />
+              <TopEntityTable title="Payables by Vendor (Top 5)" rows={data.payablesByVendor.top} entityLabel="Vendor" linkId="payables-vendor" href="/dashboard/payables" />
+              <TopEntityTable title="Receivables by Customer (Top 5)" rows={data.receivablesByCustomer.top} entityLabel="Customer" linkId="receivables-customer" href="/dashboard/receivables" />
               <OverdueInvoicesCard rows={data.overdueTop} />
             </div>
 

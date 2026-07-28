@@ -3,11 +3,11 @@ import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedCreditNotes as getCreditNotes, getCachedVendorCredits as getVendorCredits,
   getCachedCustomerPayments as getCustomerPayments, getCachedVendorPayments as getVendorPayments,
-  getCachedJournals as getJournals,
+  getCachedJournals as getJournals, getEntityMapping, canonical,
 } from "@/lib/zoho-store"
-import { getNeon } from "@/lib/neon"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 interface EntityBucket {
   invoiced: number
@@ -27,28 +27,6 @@ function inRange(date: string, from?: string, to?: string) {
   return true
 }
 
-async function getMapping(): Promise<Record<string, string>> {
-  try {
-    const sql = getNeon()
-    await sql`
-      CREATE TABLE IF NOT EXISTS entity_mapping (
-        entity_name    TEXT PRIMARY KEY,
-        canonical_name TEXT NOT NULL,
-        side           TEXT NOT NULL,
-        updated_at     TIMESTAMPTZ DEFAULT NOW()
-      )
-    `
-    const rows = await sql`SELECT entity_name, canonical_name FROM entity_mapping`
-    const map: Record<string, string> = {}
-    for (const r of rows as unknown as { entity_name: string; canonical_name: string }[]) {
-      map[r.entity_name] = r.canonical_name
-    }
-    return map
-  } catch {
-    return {}
-  }
-}
-
 // GET /api/zoho/entity-snapshot?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Returns entity-wise (customer-wise AR, vendor-wise AP) breakdown using the
 // exact entity names as they exist in Zoho Books, filtered to the chosen
@@ -61,14 +39,14 @@ export async function GET(req: NextRequest) {
     const [invoices, bills, creditNotes, vendorCredits, customerPayments, vendorPayments, journals, mapping] =
       await Promise.all([
         getInvoices(), getBills(), getCreditNotes(), getVendorCredits(),
-        getCustomerPayments(), getVendorPayments(), getJournals(), getMapping(),
+        getCustomerPayments(), getVendorPayments(), getJournals(), getEntityMapping(),
       ])
 
     const arBuckets: Record<string, EntityBucket> = {}
     const apBuckets: Record<string, EntityBucket> = {}
 
     const bucketFor = (store: Record<string, EntityBucket>, rawName: string) => {
-      const name = mapping[rawName] ?? rawName
+      const name = canonical(rawName, mapping)
       return store[name] ?? (store[name] = emptyBucket())
     }
 
