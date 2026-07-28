@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
-import { getEntityTotals, getEntityMapping, canonical } from "@/lib/zoho-store"
+import {
+  getEntityTotals, getEntityMapping, canonical,
+  getEntityCategoryMap, getDerivedVendorCategories,
+} from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -14,11 +17,16 @@ export const maxDuration = 60
 // it — take many seconds to respond.
 export async function GET() {
   try {
-    const [payableTotals, receivableTotals, mapping] = await Promise.all([
+    const [payableTotals, receivableTotals, mapping, savedCategories, derivedCategories] = await Promise.all([
       getEntityTotals("payable"),
       getEntityTotals("receivable"),
       getEntityMapping(),
+      getEntityCategoryMap(),
+      getDerivedVendorCategories(),
     ])
+
+    const lookup = (map: Record<string, string>, name: string) =>
+      map[name] ?? map[name.trim().toLowerCase()] ?? null
 
     const buildSide = (
       totals: { entity_name: string; total: number; overdue: number; count: number }[],
@@ -27,6 +35,8 @@ export async function GET() {
       // raw (unmapped) list — for the Entity Master editor
       const rawList = totals.map(t => {
         const canonical_name = canonical(t.entity_name, mapping)
+        const savedCategory = lookup(savedCategories, t.entity_name)
+        const derivedCategory = lookup(derivedCategories, t.entity_name)
         return {
           entity_name: t.entity_name,
           canonical_name,
@@ -34,6 +44,12 @@ export async function GET() {
           // the raw Zoho name, so the badge always agrees with what the
           // dashboard groups by.
           mapped: canonical_name !== t.entity_name,
+          // category = what the user set; derivedCategory = inferred from the
+          // expense account this party is most often booked against, shown as
+          // a suggestion when nothing has been set by hand.
+          category: savedCategory,
+          derivedCategory,
+          effectiveCategory: savedCategory ?? derivedCategory,
           total: t.total, overdue: t.overdue, count: t.count,
         }
       }).sort((a, b) => b.total - a.total)

@@ -272,11 +272,9 @@ export async function getLastSyncedAt(): Promise<string | null> {
 // LLP", "Asvah Retail Private Limited", …). Mapping them all to a single
 // canonical platform name is what makes the numbers decision-ready —
 // so this MUST be applied consistently in every view, not just some.
-export async function readEntityMappingRows(): Promise<{ entity_name: string; canonical_name: string }[]> {
-  const sqlT = getNeon()
-  const sqlF = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
-
-  await sqlT`
+export async function ensureEntityMappingTable(): Promise<void> {
+  const sql = getNeon()
+  await sql`
     CREATE TABLE IF NOT EXISTS entity_mapping (
       entity_name    TEXT PRIMARY KEY,
       canonical_name TEXT NOT NULL,
@@ -284,8 +282,18 @@ export async function readEntityMappingRows(): Promise<{ entity_name: string; ca
       updated_at     TIMESTAMPTZ DEFAULT NOW()
     )
   `
+  // Expense category is a later addition — added separately so existing
+  // installs pick it up without losing their saved mappings.
+  await sql`ALTER TABLE entity_mapping ADD COLUMN IF NOT EXISTS category TEXT`
+}
 
-  type Row = { entity_name: string; canonical_name: string }
+export async function readEntityMappingRows(): Promise<{ entity_name: string; canonical_name: string; category: string | null }[]> {
+  const sqlT = getNeon()
+  const sqlF = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+
+  await ensureEntityMappingTable()
+
+  type Row = { entity_name: string; canonical_name: string; category: string | null }
 
   // Read the whole table as a SINGLE aggregated JSON value.
   //
@@ -304,7 +312,11 @@ export async function readEntityMappingRows(): Promise<{ entity_name: string; ca
   // returning it in a single value is cheap.
   const AGG_QUERY = `
     SELECT COALESCE(
-      json_agg(json_build_object('entity_name', entity_name, 'canonical_name', canonical_name)),
+      json_agg(json_build_object(
+        'entity_name', entity_name,
+        'canonical_name', canonical_name,
+        'category', category
+      )),
       '[]'::json
     ) AS data
     FROM entity_mapping
@@ -322,7 +334,7 @@ export async function readEntityMappingRows(): Promise<{ entity_name: string; ca
   // Last-ditch fallback to the plain select, in case a future driver/runtime
   // fixes the underlying issue and the aggregate path ever regresses.
   if (rows.length === 0) {
-    rows = rowsOf<Row>(await sqlT`SELECT entity_name, canonical_name FROM entity_mapping`)
+    rows = rowsOf<Row>(await sqlT`SELECT entity_name, canonical_name, category FROM entity_mapping`)
   }
 
   return rows.filter(r => r && typeof r.entity_name === "string" && typeof r.canonical_name === "string")
@@ -338,6 +350,60 @@ export async function getEntityMapping(): Promise<Record<string, string>> {
     map[r.entity_name.trim().toLowerCase()] = r.canonical_name
   }
   return map
+}
+
+// Manually-assigned expense category per raw entity name.
+export async function getEntityCategoryMap(): Promise<Record<string, string>> {
+  const map: Record<string, string> = {}
+  for (const r of await readEntityMappingRows()) {
+    if (r.category) {
+      map[r.entity_name] = r.category
+      map[r.entity_name.trim().toLowerCase()] = r.category
+    }
+  }
+  return map
+}
+
+// Expense category inferred from actual Zoho data: for each vendor, the
+// expense account they've been booked against the most (by value). Zoho
+// bills carry no category, so zoho_expenses.account_name is the only real
+// signal available — this gives every vendor that appears in an expense a
+// sensible category with no manual work, and anything it can't infer can
+// be set by hand in Entity Master.
+export async function getDerivedVendorCategories(): Promise<Record<string, string>> {
+  const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+
+  const res = await sql(`
+    SELECT COALESCE(json_agg(t), '[]'::json) AS data FROM (
+      SELECT
+        TRIM(vendor_name) AS entity_name,
+        COALESCE(NULLIF(TRIM(account_name), ''), 'Uncategorised') AS category,
+        COALESCE(SUM(total), 0)::float8 AS amt
+      FROM zoho_expenses
+      WHERE vendor_name IS NOT NULL AND TRIM(vendor_name) <> ''
+      GROUP BY 1, 2
+    ) t
+  `)
+
+  const raw = rowsOf<{ data: unknown }>(res)[0]?.data
+  if (!raw) return {}
+  const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+  if (!Array.isArray(arr)) return {}
+
+  // Keep the highest-value category per vendor.
+  const best: Record<string, { category: string; amt: number }> = {}
+  for (const row of arr as { entity_name: string; category: string; amt: number }[]) {
+    const key = row.entity_name
+    const amt = num(row.amt)
+    if (!best[key] || amt > best[key].amt) best[key] = { category: row.category, amt }
+  }
+
+  const out: Record<string, string> = {}
+  for (const [name, v] of Object.entries(best)) {
+    out[name] = v.category
+    out[name.trim().toLowerCase()] = v.category
+  }
+  return out
 }
 
 // Resolve a raw Zoho party name to its canonical/platform name.

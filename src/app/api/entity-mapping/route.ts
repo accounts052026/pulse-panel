@@ -1,35 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getNeon, rowsOf } from "@/lib/neon"
+import { ensureEntityMappingTable, readEntityMappingRows } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
 
-async function ensureTable() {
-  const sql = getNeon()
-  await sql`
-    CREATE TABLE IF NOT EXISTS entity_mapping (
-      entity_name    TEXT PRIMARY KEY,
-      canonical_name TEXT NOT NULL,
-      side           TEXT NOT NULL,
-      updated_at     TIMESTAMPTZ DEFAULT NOW()
-    )
-  `
-}
+const ensureTable = ensureEntityMappingTable
 
-// GET → { count, rows: [...], map: { "raw entity name": {canonical_name, side} } }
+// GET → { count, rows: [...] }
 // Visiting this URL directly is the quickest way to see whether mappings
-// are actually landing in the table, independent of any UI.
+// are actually landing in the table, independent of any UI. Uses the same
+// aggregate read path as the rest of the app.
 export async function GET() {
   try {
-    await ensureTable()
-    const sql = getNeon()
-    const res = await sql`SELECT entity_name, canonical_name, side, updated_at FROM entity_mapping ORDER BY updated_at DESC`
-    const rows = rowsOf<{ entity_name: string; canonical_name: string; side: string; updated_at: string }>(res)
-    const map: Record<string, { canonical_name: string; side: string }> = {}
-    for (const r of rows) {
-      map[r.entity_name] = { canonical_name: r.canonical_name, side: r.side }
-    }
-    return NextResponse.json({ count: rows.length, rows, map })
+    const rows = await readEntityMappingRows()
+    return NextResponse.json({ count: rows.length, rows })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -48,17 +33,34 @@ export async function POST(req: NextRequest) {
     const entity_name    = typeof body.entity_name === "string" ? body.entity_name : ""
     const canonical_name = typeof body.canonical_name === "string" ? body.canonical_name.trim() : ""
     const side            = typeof body.side === "string" ? body.side.trim() : ""
+    // Optional. `null` clears it; omitting the key leaves any existing value alone.
+    const hasCategory = Object.prototype.hasOwnProperty.call(body, "category")
+    const category    = typeof body.category === "string" ? (body.category.trim() || null) : null
+
     if (!entity_name || !canonical_name || !side) {
       return NextResponse.json({ error: "entity_name, canonical_name, side are required" }, { status: 400 })
     }
-    await sql`
-      INSERT INTO entity_mapping (entity_name, canonical_name, side, updated_at)
-      VALUES (${entity_name}, ${canonical_name}, ${side}, NOW())
-      ON CONFLICT (entity_name) DO UPDATE SET
-        canonical_name = EXCLUDED.canonical_name,
-        side           = EXCLUDED.side,
-        updated_at     = NOW()
-    `
+
+    if (hasCategory) {
+      await sql`
+        INSERT INTO entity_mapping (entity_name, canonical_name, side, category, updated_at)
+        VALUES (${entity_name}, ${canonical_name}, ${side}, ${category}, NOW())
+        ON CONFLICT (entity_name) DO UPDATE SET
+          canonical_name = EXCLUDED.canonical_name,
+          side           = EXCLUDED.side,
+          category       = EXCLUDED.category,
+          updated_at     = NOW()
+      `
+    } else {
+      await sql`
+        INSERT INTO entity_mapping (entity_name, canonical_name, side, updated_at)
+        VALUES (${entity_name}, ${canonical_name}, ${side}, NOW())
+        ON CONFLICT (entity_name) DO UPDATE SET
+          canonical_name = EXCLUDED.canonical_name,
+          side           = EXCLUDED.side,
+          updated_at     = NOW()
+      `
+    }
 
     // Read the row straight back and confirm it actually persisted. Every
     // previous version of this endpoint returned {ok:true} as soon as the

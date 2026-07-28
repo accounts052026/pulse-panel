@@ -6,6 +6,9 @@ interface RawEntity {
   entity_name: string
   canonical_name: string
   mapped: boolean
+  category: string | null
+  derivedCategory: string | null
+  effectiveCategory: string | null
   total: number
   overdue: number
   count: number
@@ -24,8 +27,10 @@ export default function EntityMasterPage() {
   const [search, setSearch] = useState("")
   const [msg, setMsg] = useState("")
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [catDrafts, setCatDrafts] = useState<Record<string, string>>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkTarget, setBulkTarget] = useState("")
+  const [bulkCategory, setBulkCategory] = useState("")
   const [busy, setBusy] = useState(false)
 
   const load = () => {
@@ -57,10 +62,24 @@ export default function EntityMasterPage() {
     return Array.from(new Set(all.filter(r => r.mapped).map(r => r.canonical_name))).sort()
   }, [data])
 
-  const postMapping = async (entity_name: string, canonical_name: string) => {
+  // Every expense category seen in Zoho plus any set by hand — offered as
+  // autocomplete so categories stay consistent instead of near-duplicates.
+  const existingCategories = useMemo(() => {
+    const all = [...(data?.payables.raw ?? []), ...(data?.receivables.raw ?? [])]
+    const set = new Set<string>()
+    for (const r of all) {
+      if (r.category) set.add(r.category)
+      if (r.derivedCategory) set.add(r.derivedCategory)
+    }
+    return Array.from(set).sort()
+  }, [data])
+
+  const postMapping = async (entity_name: string, canonical_name: string, category?: string | null) => {
+    const body: Record<string, unknown> = { entity_name, canonical_name, side }
+    if (category !== undefined) body.category = category
     const res = await fetch("/api/entity-mapping", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entity_name, canonical_name, side }),
+      body: JSON.stringify(body),
     })
     const text = await res.text()
     let d: any
@@ -82,23 +101,43 @@ export default function EntityMasterPage() {
     } finally { setBusy(false) }
   }
 
+  // Saving a category must preserve the row's existing canonical name,
+  // since both live on the same entity_mapping row.
+  const saveCategory = async (r: RawEntity, category: string) => {
+    setBusy(true); setError("")
+    try {
+      await postMapping(r.entity_name, drafts[r.entity_name] ?? r.canonical_name, category || null)
+      setCatDrafts(d => { const n = { ...d }; delete n[r.entity_name]; return n })
+      setMsg(`Category set: ${r.entity_name} → ${category || "cleared"}`)
+      setTimeout(() => setMsg(""), 3000)
+      load()
+    } catch (e) {
+      setError(`Category save failed for "${r.entity_name}": ${e instanceof Error ? e.message : String(e)}`)
+    } finally { setBusy(false) }
+  }
+
   const bulkSave = async () => {
     const target = bulkTarget.trim()
-    if (!target || selected.size === 0) return
+    const cat = bulkCategory.trim()
+    if ((!target && !cat) || selected.size === 0) return
     setBusy(true); setError("")
     let ok = 0
     try {
       for (const entity_name of Array.from(selected)) {
-        await postMapping(entity_name, target)
+        const row = rows.find(r => r.entity_name === entity_name)
+        const name = target || row?.canonical_name || entity_name
+        await postMapping(entity_name, name, cat ? cat : undefined)
         ok++
       }
-      setMsg(`Mapped ${ok} ${ok === 1 ? "entity" : "entities"} → ${target}`)
+      const what = [target && `→ ${target}`, cat && `category "${cat}"`].filter(Boolean).join(", ")
+      setMsg(`Updated ${ok} ${ok === 1 ? "entity" : "entities"}: ${what}`)
       setSelected(new Set())
       setBulkTarget("")
+      setBulkCategory("")
       setTimeout(() => setMsg(""), 4000)
       load()
     } catch (e) {
-      setError(`Bulk map stopped after ${ok} saved: ${e instanceof Error ? e.message : String(e)}`)
+      setError(`Bulk update stopped after ${ok} saved: ${e instanceof Error ? e.message : String(e)}`)
     } finally { setBusy(false) }
   }
 
@@ -170,7 +209,7 @@ export default function EntityMasterPage() {
               display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
             }}>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: selected.size ? C.text : C.dim }}>
-                {selected.size ? `${selected.size} selected` : "Select rows to map several entities to one platform"}
+                {selected.size ? `${selected.size} selected` : "Select rows to set platform and/or expense category in bulk"}
               </span>
               <input
                 placeholder="Platform / canonical name…"
@@ -178,20 +217,31 @@ export default function EntityMasterPage() {
                 onChange={e => setBulkTarget(e.target.value)}
                 list="canonical-options"
                 disabled={!selected.size}
-                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12.5, minWidth: 240, background: selected.size ? "#fff" : "#F8FAFC" }}
+                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12.5, minWidth: 210, background: selected.size ? "#fff" : "#F8FAFC" }}
+              />
+              <input
+                placeholder="Expense category…"
+                value={bulkCategory}
+                onChange={e => setBulkCategory(e.target.value)}
+                list="category-options"
+                disabled={!selected.size}
+                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12.5, minWidth: 190, background: selected.size ? "#fff" : "#F8FAFC" }}
               />
               <datalist id="canonical-options">
                 {existingCanonicals.map(c => <option key={c} value={c} />)}
               </datalist>
+              <datalist id="category-options">
+                {existingCategories.map(c => <option key={c} value={c} />)}
+              </datalist>
               <button
                 onClick={bulkSave}
-                disabled={!selected.size || !bulkTarget.trim() || busy}
+                disabled={!selected.size || (!bulkTarget.trim() && !bulkCategory.trim()) || busy}
                 style={{
-                  background: (!selected.size || !bulkTarget.trim() || busy) ? "#CBD5E1" : C.accent,
+                  background: (!selected.size || (!bulkTarget.trim() && !bulkCategory.trim()) || busy) ? "#CBD5E1" : C.accent,
                   color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px",
-                  fontSize: 12.5, fontWeight: 700, cursor: (!selected.size || !bulkTarget.trim() || busy) ? "not-allowed" : "pointer",
+                  fontSize: 12.5, fontWeight: 700, cursor: (!selected.size || (!bulkTarget.trim() && !bulkCategory.trim()) || busy) ? "not-allowed" : "pointer",
                 }}
-              >{busy ? "Saving…" : "Map selected"}</button>
+              >{busy ? "Saving…" : "Apply to selected"}</button>
               {selected.size > 0 && (
                 <button onClick={() => setSelected(new Set())} style={{ background: "none", border: "none", color: C.dim, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>Clear</button>
               )}
@@ -201,13 +251,14 @@ export default function EntityMasterPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" as const, minWidth: 940 }}>
                 <colgroup>
                   <col style={{ width: 42 }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "7%" }} />
+                  <col style={{ width: "21%" }} />
+                  <col style={{ width: "19%" }} />
+                  <col style={{ width: "17%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "8%" }} />
                   <col style={{ width: "9%" }} />
-                  <col style={{ width: "10%" }} />
                 </colgroup>
                 <thead>
                   <tr style={{ background: "#F8FAFC", color: C.dim, textAlign: "left" as const }}>
@@ -220,6 +271,7 @@ export default function EntityMasterPage() {
                     </th>
                     <th style={{ padding: "11px 12px", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700 }}>Raw Entity Name (from Zoho)</th>
                     <th style={{ padding: "11px 12px", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700 }}>Canonical / Platform</th>
+                    <th style={{ padding: "11px 12px", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700 }}>Expense Category</th>
                     <th style={{ padding: "11px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700 }}>Total (₹)</th>
                     <th style={{ padding: "11px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700 }}>Overdue (₹)</th>
                     <th style={{ padding: "11px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700 }}>Docs</th>
@@ -229,11 +281,13 @@ export default function EntityMasterPage() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
-                    <tr><td colSpan={8} style={{ padding: 24, textAlign: "center" as const, color: C.dim }}>No entities found</td></tr>
+                    <tr><td colSpan={9} style={{ padding: 24, textAlign: "center" as const, color: C.dim }}>No entities found</td></tr>
                   )}
                   {filtered.map(r => {
                     const draft = drafts[r.entity_name] ?? r.canonical_name
                     const dirty = draft !== r.canonical_name
+                    const catDraft = catDrafts[r.entity_name] ?? r.category ?? ""
+                    const catDirty = catDraft !== (r.category ?? "")
                     const isSel = selected.has(r.entity_name)
                     return (
                       <tr key={r.entity_name} style={{ borderTop: `1px solid ${C.border}`, background: isSel ? "#FFF7ED" : undefined }}>
@@ -251,6 +305,25 @@ export default function EntityMasterPage() {
                             style={{ border: `1px solid ${dirty ? C.accent : C.border}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, width: "100%", boxSizing: "border-box" as const, background: r.mapped && !dirty ? "#F0FDF4" : "#fff" }}
                           />
                         </td>
+                        <td style={{ padding: "11px 12px" }}>
+                          <input
+                            value={catDraft}
+                            onChange={e => setCatDrafts(d => ({ ...d, [r.entity_name]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === "Enter" && catDirty) saveCategory(r, catDraft) }}
+                            list="category-options"
+                            placeholder={r.derivedCategory ?? "Set category…"}
+                            title={r.category ? `Set manually: ${r.category}` : r.derivedCategory ? `From Zoho expenses: ${r.derivedCategory}` : "No category"}
+                            style={{
+                              border: `1px solid ${catDirty ? C.accent : C.border}`, borderRadius: 6,
+                              padding: "6px 9px", fontSize: 12, width: "100%", boxSizing: "border-box" as const,
+                              background: r.category ? "#F0FDF4" : "#fff",
+                              color: r.category ? C.text : undefined,
+                            }}
+                          />
+                          {!r.category && r.derivedCategory && (
+                            <div style={{ fontSize: 9.5, color: C.dim, marginTop: 3 }}>from Zoho expenses</div>
+                          )}
+                        </td>
                         <td style={{ padding: "11px 12px", textAlign: "right" as const }}>{fmtFull(r.total)}</td>
                         <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
                         <td style={{ padding: "11px 12px", textAlign: "right" as const, color: C.dim }}>{r.count}</td>
@@ -260,14 +333,14 @@ export default function EntityMasterPage() {
                             : <span style={{ background: "#64748B15", color: C.dim, fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 10, whiteSpace: "nowrap" as const }}>RAW</span>}
                         </td>
                         <td style={{ padding: "11px 12px", whiteSpace: "nowrap" as const }}>
-                          {dirty && (
+                          {(dirty || catDirty) && (
                             <button
-                              onClick={() => save(r.entity_name, draft)}
+                              onClick={() => catDirty ? saveCategory(r, catDraft) : save(r.entity_name, draft)}
                               disabled={busy}
                               style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 6, padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: busy ? "wait" : "pointer", marginRight: 6 }}
                             >Save</button>
                           )}
-                          {r.mapped && !dirty && (
+                          {r.mapped && !dirty && !catDirty && (
                             <button onClick={() => reset(r.entity_name)} disabled={busy} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 11px", fontSize: 11, cursor: busy ? "wait" : "pointer", color: C.dim }}>Reset</button>
                           )}
                         </td>
