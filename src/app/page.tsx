@@ -703,24 +703,49 @@ function EntitySnapshotTable({rows, side}:{rows: EntityRow[]; side: "ar" | "ap"}
   )
 }
 
-function EntitySnapshotView({platforms}:{platforms:PlatformCalc[]}) {
-  const arRows = mergeEntityMaps(platforms, "ar")
-  const apRows = mergeEntityMaps(platforms, "ap")
+// Entity-wise snapshot — pulled live from Zoho Books (real customer/vendor
+// names, not the Google Sheet's fixed-column extraction), filtered to
+// whichever date range is selected up top, and grouped by any canonical
+// name mappings saved in the Entity Master (/dashboard/entities).
+function EntitySnapshotView({dateFrom, dateTo}:{dateFrom:string; dateTo:string}) {
+  const [arRows, setArRows]   = useState<EntityRow[]>([])
+  const [apRows, setApRows]   = useState<EntityRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState("")
+
+  useEffect(() => {
+    setLoading(true); setError("")
+    const params = new URLSearchParams()
+    if (dateFrom) params.set("from", dateFrom)
+    if (dateTo)   params.set("to", dateTo)
+    fetch(`/api/zoho/entity-snapshot?${params.toString()}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setError(d.error); return }
+        setArRows(d.receivables); setApRows(d.payables)
+      })
+      .catch(e => setError(String(e)))
+      .finally(() => setLoading(false))
+  }, [dateFrom, dateTo])
+
+  if (loading) return <div style={{textAlign:"center" as const,padding:40,color:C.dimText}}>⟳ Loading entity data from Zoho Books…</div>
+  if (error) return <div style={{background:C.negativeDim,border:`1px solid ${C.negative}44`,borderRadius:10,padding:"12px 16px",color:C.negative,fontSize:13}}>⚠ {error}</div>
+
   return (
     <div style={{display:"flex",flexDirection:"column" as const,gap:20}}>
       <div>
-        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.positive,marginBottom:8}}>◆ Receivables — Customer Wise</div>
+        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.positive,marginBottom:8}}>◆ Receivables — Customer Wise (Zoho Books{dateFrom||dateTo?`, ${dateFrom||"…"} → ${dateTo||"…"}`:""})</div>
         <EntitySnapshotTable rows={arRows} side="ar"/>
       </div>
       <div>
-        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.negative,marginBottom:8}}>◆ Payables — Vendor Wise</div>
+        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.negative,marginBottom:8}}>◆ Payables — Vendor Wise (Zoho Books{dateFrom||dateTo?`, ${dateFrom||"…"} → ${dateTo||"…"}`:""})</div>
         <EntitySnapshotTable rows={apRows} side="ap"/>
       </div>
     </div>
   )
 }
 
-function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
+function ARAPTab({platforms, dateFrom, dateTo}:{platforms:PlatformCalc[]; dateFrom:string; dateTo:string}) {
   const [view,setView] = useState<"summary"|"waterfall"|"platform_detail"|"entity">("summary")
   const [selP,setSelP] = useState<string|null>(null)
 
@@ -779,7 +804,7 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
         {selP && <NavTab label={`${selP} Detail`} active={view==="platform_detail"} onClick={()=>setView("platform_detail")}/>}
       </div>
 
-      {view==="entity" && <EntitySnapshotView platforms={platforms}/>}
+      {view==="entity" && <EntitySnapshotView dateFrom={dateFrom} dateTo={dateTo}/>}
 
       {/* ── SUMMARY VIEW — platforms as columns ── */}
       {view==="summary" && (()=>{
@@ -1838,7 +1863,7 @@ export default function Home() {
         )}
         {!loading && platforms.length>0 && (
           <>
-            {tab==="arap" && <ARAPTab platforms={platforms}/>}
+            {tab==="arap" && <ARAPTab platforms={platforms} dateFrom={dateFrom} dateTo={dateTo}/>}
             {tab==="pl"   && <PLTab/>}
             {tab==="cf"   && <CFTab cfRows={cfRows} wcRows={wcRows} bankRows={bankRows}/>}
           </>

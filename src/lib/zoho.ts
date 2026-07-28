@@ -120,6 +120,46 @@ export interface ZohoBankAccount {
   balance: number
 }
 
+export interface ZohoCreditNote {
+  creditnote_id: string
+  customer_name: string
+  date: string
+  total: number
+  status: string
+}
+
+export interface ZohoVendorCredit {
+  vendor_credit_id: string
+  vendor_name: string
+  date: string
+  total: number
+  status: string
+}
+
+export interface ZohoCustomerPayment {
+  payment_id: string
+  customer_name: string
+  date: string
+  amount: number
+  tax_amount_withheld?: number // TDS withheld by customer, if tracked
+}
+
+export interface ZohoVendorPayment {
+  payment_id: string
+  vendor_name: string
+  date: string
+  amount: number
+  tax_amount_withheld?: number // TDS deducted from vendor, if tracked
+}
+
+export interface ZohoJournal {
+  journal_id: string
+  journal_date: string
+  reference_number?: string
+  total: number
+  line_items?: { customer_name?: string; vendor_name?: string; amount: number; debit_or_credit: "debit" | "credit" }[]
+}
+
 export async function getInvoices(): Promise<ZohoInvoice[]> {
   return zohoFetchAll("/invoices", "invoices", { sort_column: "date", sort_order: "D" })
 }
@@ -128,12 +168,29 @@ export async function getBills(): Promise<ZohoBill[]> {
   return zohoFetchAll("/bills", "bills", { sort_column: "date", sort_order: "D" })
 }
 
-export async function getCreditNotes(): Promise<any[]> {
+export async function getCreditNotes(): Promise<ZohoCreditNote[]> {
   return zohoFetchAll("/creditnotes", "creditnotes")
 }
 
-export async function getVendorCredits(): Promise<any[]> {
+export async function getVendorCredits(): Promise<ZohoVendorCredit[]> {
   return zohoFetchAll("/vendorcredits", "vendor_credits")
+}
+
+export async function getCustomerPayments(): Promise<ZohoCustomerPayment[]> {
+  return zohoFetchAll("/customerpayments", "customerpayments")
+}
+
+export async function getVendorPayments(): Promise<ZohoVendorPayment[]> {
+  return zohoFetchAll("/vendorpayments", "vendorpayments")
+}
+
+export async function getJournals(): Promise<ZohoJournal[]> {
+  // Note: the list endpoint returns journal headers without line_items.
+  // Full customer/vendor attribution per journal would need a detail call
+  // per journal_id (/journals/{id}) — expensive at scale, so journal
+  // amounts here are attributed only when Zoho's list response includes
+  // reference_number matching a customer/vendor name; otherwise 0.
+  return zohoFetchAll("/journals", "journals")
 }
 
 export async function getExpenses(): Promise<ZohoExpense[]> {
