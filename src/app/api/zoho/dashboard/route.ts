@@ -6,6 +6,7 @@ import {
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 // Reading ~23k invoices back out of Neon takes many round trips; the
 // default 10s serverless budget was not enough headroom.
 export const maxDuration = 60

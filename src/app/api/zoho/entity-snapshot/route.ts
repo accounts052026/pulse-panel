@@ -7,6 +7,7 @@ import {
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 export const maxDuration = 60
 
 interface EntityBucket {

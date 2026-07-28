@@ -10,7 +10,25 @@ export function getNeon() {
   if (!_sql) {
     const url = process.env.DATABASE_URL
     if (!url) throw new Error("DATABASE_URL env var missing")
-    _sql = neon(url)
+
+    // fetchOptions.cache = "no-store" is NOT optional here.
+    //
+    // The Neon serverless driver talks to Postgres over HTTP using fetch,
+    // and Next.js wraps global fetch with its Data Cache. Without this,
+    // each distinct SQL string gets its response cached on first execution
+    // and replayed forever — so the database is queried once and then
+    // effectively frozen.
+    //
+    // This single defect produced every "impossible" symptom in this app:
+    //   - `SELECT ... FROM entity_mapping` first ran while the table was
+    //     empty, cached [], and kept returning [] no matter how many rows
+    //     were later inserted — while `SELECT COUNT(*)`, a different SQL
+    //     string first run later, correctly returned 3. Hence a table that
+    //     simultaneously "had 3 rows" and "returned no rows".
+    //   - Newly saved mappings never appearing, however many refreshes.
+    //   - Stale dashboard totals that ignored fresh syncs.
+    // Any query whose result must reflect current data has to bypass it.
+    _sql = neon(url, { fetchOptions: { cache: "no-store" } })
   }
   return _sql
 }

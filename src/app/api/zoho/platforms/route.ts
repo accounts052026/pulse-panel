@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getCachedInvoices as getInvoices, getCachedBills as getBills, getLastSyncedAt, getEntityMapping, canonical } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 export const maxDuration = 60
 
 // Zoho itself has no "platform" field on invoices/bills — CURRYiT sells and

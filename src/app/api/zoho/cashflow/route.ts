@@ -8,6 +8,8 @@ import {
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
+export const maxDuration = 60
 
 function monthKey(d: string) { return d?.slice(0, 7) ?? "Unknown" }
 

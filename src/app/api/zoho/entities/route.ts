@@ -1,47 +1,40 @@
 import { NextResponse } from "next/server"
-import { getCachedInvoices as getInvoices, getCachedBills as getBills, getEntityMapping, canonical } from "@/lib/zoho-store"
+import { getEntityTotals, getEntityMapping, canonical } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 export const maxDuration = 60
-
-function isOverdue(due_date: string, balance: number) {
-  return balance > 0 && new Date(due_date) < new Date()
-}
 
 // Returns EVERY distinct entity that appears in Zoho invoices/bills — no top-N cutoff.
 // Each row carries both the raw name (as it appears in Zoho) and, if mapped, the canonical name.
+//
+// Totals are aggregated by Postgres (see getEntityTotals) rather than by
+// pulling ~26k invoice/bill rows across the wire and reducing them in JS,
+// which is what made this endpoint — and the three pages that depend on
+// it — take many seconds to respond.
 export async function GET() {
   try {
-    const [invoices, bills, mapping] = await Promise.all([getInvoices(), getBills(), getEntityMapping()])
+    const [payableTotals, receivableTotals, mapping] = await Promise.all([
+      getEntityTotals("payable"),
+      getEntityTotals("receivable"),
+      getEntityMapping(),
+    ])
 
     const buildSide = (
-      items: { balance: number; due_date: string }[],
-      nameKey: "customer_name" | "vendor_name",
+      totals: { entity_name: string; total: number; overdue: number; count: number }[],
       side: "payable" | "receivable"
     ) => {
-      const raw: Record<string, { total: number; overdue: number; count: number }> = {}
-      for (const it of items as any[]) {
-        const name = it[nameKey] || "Unknown"
-        if (!raw[name]) raw[name] = { total: 0, overdue: 0, count: 0 }
-        raw[name].total += it.balance || 0
-        raw[name].count += 1
-        if (isOverdue(it.due_date, it.balance)) raw[name].overdue += it.balance
-      }
-
       // raw (unmapped) list — for the Entity Master editor
-      const rawList = Object.entries(raw).map(([entity_name, v]) => {
-        const canonical_name = canonical(entity_name, mapping)
+      const rawList = totals.map(t => {
+        const canonical_name = canonical(t.entity_name, mapping)
         return {
-          entity_name,
+          entity_name: t.entity_name,
           canonical_name,
           // "mapped" means it actually resolves to something different from
-          // the raw Zoho name. Previously this was `!!mapping[entity_name]`,
-          // an exact-key hit only — so a mapping saved against a slightly
-          // different form of the name showed the row as RAW even though it
-          // was being applied. Deriving it from the resolved value keeps the
-          // badge honest and consistent with what the dashboard groups by.
-          mapped: canonical_name !== entity_name,
-          total: v.total, overdue: v.overdue, count: v.count,
+          // the raw Zoho name, so the badge always agrees with what the
+          // dashboard groups by.
+          mapped: canonical_name !== t.entity_name,
+          total: t.total, overdue: t.overdue, count: t.count,
         }
       }).sort((a, b) => b.total - a.total)
 
@@ -61,10 +54,10 @@ export async function GET() {
       return { raw: rawList, grouped: groupedList, side }
     }
 
-    const payables    = buildSide(bills as any[], "vendor_name", "payable")
-    const receivables = buildSide(invoices as any[], "customer_name", "receivable")
-
-    return NextResponse.json({ payables, receivables })
+    return NextResponse.json({
+      payables: buildSide(payableTotals, "payable"),
+      receivables: buildSide(receivableTotals, "receivable"),
+    })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })

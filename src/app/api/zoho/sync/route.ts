@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { syncModuleBatch, getSyncStatus, ZOHO_MODULES, type ZohoModule } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 export const maxDuration = 60
 
 // GET /api/zoho/sync                → cron: runs one batch (few pages) per module, sequentially

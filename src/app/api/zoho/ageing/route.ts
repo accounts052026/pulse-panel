@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getCachedInvoices as getInvoices, getCachedBills as getBills, getLastSyncedAt, getEntityMapping, canonical } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 export const maxDuration = 60
 
 const BUCKETS = ["0 - 30 Days", "31 - 60 Days", "61 - 90 Days", "91 - 120 Days", "> 120 Days"] as const

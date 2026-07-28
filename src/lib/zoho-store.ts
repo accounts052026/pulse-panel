@@ -346,6 +346,55 @@ export function canonical(raw: string | null | undefined, mapping: Record<string
   return mapping[name] ?? mapping[name.toLowerCase()] ?? name
 }
 
+// ── Server-side aggregation ─────────────────────────────────────
+//
+// Entity totals used to be computed by pulling every invoice/bill row into
+// JS and reducing them — ~50 sequential HTTP round trips for 22k invoices
+// before a page could render. Postgres can do this in one query, so these
+// helpers push the GROUP BY down to the database and return a single
+// json_agg value (the one-row/one-column shape proven to work here).
+//
+// due_date/date are stored as TEXT in ISO "YYYY-MM-DD" form, so
+// lexicographic comparison against to_char(CURRENT_DATE,...) is a correct
+// date comparison and lets the DB do the overdue split too.
+export interface EntityTotal {
+  entity_name: string
+  total: number
+  overdue: number
+  count: number
+}
+
+export async function getEntityTotals(side: "payable" | "receivable"): Promise<EntityTotal[]> {
+  const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+  const table = side === "payable" ? "zoho_bills" : "zoho_invoices"
+  const nameCol = side === "payable" ? "vendor_name" : "customer_name"
+
+  const res = await sql(`
+    SELECT COALESCE(json_agg(t), '[]'::json) AS data FROM (
+      SELECT
+        COALESCE(NULLIF(TRIM(${nameCol}), ''), 'Unknown') AS entity_name,
+        COALESCE(SUM(balance), 0)::float8 AS total,
+        COALESCE(SUM(CASE WHEN balance > 0 AND due_date IS NOT NULL AND due_date <> ''
+                          AND due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')
+                     THEN balance ELSE 0 END), 0)::float8 AS overdue,
+        COUNT(*)::int AS count
+      FROM ${table}
+      GROUP BY 1
+    ) t
+  `)
+
+  const raw = rowsOf<{ data: unknown }>(res)[0]?.data
+  if (!raw) return []
+  const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+  if (!Array.isArray(arr)) return []
+  return (arr as EntityTotal[]).map(r => ({
+    entity_name: r.entity_name,
+    total: num(r.total),
+    overdue: num(r.overdue),
+    count: Number(r.count) || 0,
+  }))
+}
+
 // ── Typed readers used by the dashboard/entities/entity-snapshot routes ──
 //
 // IMPORTANT: Postgres NUMERIC columns come back from the Neon serverless

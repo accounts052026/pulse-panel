@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getNeon, rowsOf } from "@/lib/neon"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 async function ensureTable() {
   const sql = getNeon()
