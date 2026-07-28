@@ -46,6 +46,29 @@ export async function GET() {
       out.countViaFunctionForm = { error: e instanceof Error ? e.message : String(e) }
     }
 
+    // The aggregate path now used by readEntityMappingRows — folds every row
+    // into one JSON value, since aggregates work here while row-returning
+    // multi-column selects come back empty.
+    try {
+      const aggRes = await sqlF(`
+        SELECT COALESCE(
+          json_agg(json_build_object('entity_name', entity_name, 'canonical_name', canonical_name)),
+          '[]'::json
+        ) AS data
+        FROM entity_mapping
+      `)
+      const raw = rowsOf<{ data: unknown }>(aggRes)[0]?.data
+      out.jsonAggForm = {
+        typeofData: typeof raw,
+        rawValue: raw ?? null,
+        decodedLength: Array.isArray(typeof raw === "string" ? JSON.parse(raw as string) : raw)
+          ? (typeof raw === "string" ? JSON.parse(raw as string) : (raw as unknown[])).length
+          : null,
+      }
+    } catch (e) {
+      out.jsonAggForm = { error: e instanceof Error ? e.message : String(e) }
+    }
+
     try {
       const rows = await readEntityMappingRows()
       out.readEntityMappingRows = { length: rows.length, rows: rows.slice(0, 20) }

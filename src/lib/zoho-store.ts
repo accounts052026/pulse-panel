@@ -285,20 +285,45 @@ export async function readEntityMappingRows(): Promise<{ entity_name: string; ca
     )
   `
 
-  const QUERY = "SELECT entity_name, canonical_name FROM entity_mapping"
   type Row = { entity_name: string; canonical_name: string }
 
-  // This table is read through BOTH driver call forms because they have
-  // demonstrably behaved differently in this project: the Zoho tables are
-  // read via the function-call form (sql(text, params)) and work, while
-  // this one used the tagged-template form and came back empty even with
-  // rows visibly present in Neon. Rather than bet on which form is
-  // reliable, try the template form and fall back to the function form
-  // whenever it yields nothing — an empty mapping is never the "correct"
-  // answer when the table has rows, and silently returning one is what
-  // made every mapped name render as its raw Zoho name everywhere.
-  let rows = rowsOf<Row>(await sqlT`SELECT entity_name, canonical_name FROM entity_mapping`)
-  if (rows.length === 0) rows = rowsOf<Row>(await sqlF(QUERY))
+  // Read the whole table as a SINGLE aggregated JSON value.
+  //
+  // Why not a plain `SELECT entity_name, canonical_name FROM entity_mapping`?
+  // Because on this stack that query returns an EMPTY array while, in the
+  // very same request, `SELECT COUNT(*) FROM entity_mapping` correctly
+  // returns 3 (confirmed via /api/debug/mapping). Both driver call forms
+  // behave identically, so it isn't the tagged-template vs function-call
+  // distinction — row-returning multi-column selects are what break. This
+  // is the same unexplained behaviour that forced the Zoho readers onto
+  // paginated reads earlier in this project.
+  //
+  // Aggregates demonstrably DO work, so we ask Postgres to fold every row
+  // into one json_agg value and decode it here. One row, one column — the
+  // shape that is known to survive — and the mapping is small enough that
+  // returning it in a single value is cheap.
+  const AGG_QUERY = `
+    SELECT COALESCE(
+      json_agg(json_build_object('entity_name', entity_name, 'canonical_name', canonical_name)),
+      '[]'::json
+    ) AS data
+    FROM entity_mapping
+  `
+
+  const decode = (res: unknown): Row[] => {
+    const raw = rowsOf<{ data: unknown }>(res)[0]?.data
+    if (!raw) return []
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+    return Array.isArray(arr) ? (arr as Row[]) : []
+  }
+
+  let rows = decode(await sqlF(AGG_QUERY))
+
+  // Last-ditch fallback to the plain select, in case a future driver/runtime
+  // fixes the underlying issue and the aggregate path ever regresses.
+  if (rows.length === 0) {
+    rows = rowsOf<Row>(await sqlT`SELECT entity_name, canonical_name FROM entity_mapping`)
+  }
 
   return rows.filter(r => r && typeof r.entity_name === "string" && typeof r.canonical_name === "string")
 }
