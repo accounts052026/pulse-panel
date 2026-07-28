@@ -29,7 +29,29 @@ export async function GET() {
     const inlineFullCols = await sql`SELECT invoice_id, invoice_number, customer_name, date, due_date, total, balance, status FROM zoho_invoices`
     const inlineFullColsLength = (inlineFullCols as unknown as any[]).length
 
-    return NextResponse.json({ bills, invoices, billStats, invoiceStats, viaHelperInvoices, viaHelperBills, helperError, inlineFullColsLength })
+    // Column-by-column isolation, all rows, no LIMIT — find which single
+    // column (or which specific value in it) breaks the full result set.
+    const onlyId          = await sql`SELECT invoice_id FROM zoho_invoices`
+    const onlyInvoiceNum  = await sql`SELECT invoice_number FROM zoho_invoices`
+    const onlyDueDate     = await sql`SELECT due_date FROM zoho_invoices`
+    const onlyDate        = await sql`SELECT date FROM zoho_invoices`
+    const onlyCustomer    = await sql`SELECT customer_name FROM zoho_invoices`
+    const onlyTotalBal    = await sql`SELECT total, balance FROM zoho_invoices`
+    const onlyStatus      = await sql`SELECT status FROM zoho_invoices`
+    const allNoLimit      = await sql`SELECT invoice_id, customer_name, total, balance, status FROM zoho_invoices`
+
+    const columnTest = {
+      onlyId: (onlyId as any[]).length,
+      onlyInvoiceNum: (onlyInvoiceNum as any[]).length,
+      onlyDueDate: (onlyDueDate as any[]).length,
+      onlyDate: (onlyDate as any[]).length,
+      onlyCustomer: (onlyCustomer as any[]).length,
+      onlyTotalBal: (onlyTotalBal as any[]).length,
+      onlyStatus: (onlyStatus as any[]).length,
+      allNoLimit: (allNoLimit as any[]).length,
+    }
+
+    return NextResponse.json({ bills, invoices, billStats, invoiceStats, viaHelperInvoices, viaHelperBills, helperError, inlineFullColsLength, columnTest })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
