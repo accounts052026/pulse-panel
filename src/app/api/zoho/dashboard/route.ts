@@ -1,7 +1,30 @@
 import { NextResponse } from "next/server"
 import { getInvoices, getBills, getExpenses, getBankAccounts, type ZohoInvoice, type ZohoBill, type ZohoExpense } from "@/lib/zoho"
+import { getNeon } from "@/lib/neon"
 
 export const dynamic = "force-dynamic"
+
+async function getMapping(): Promise<Record<string, string>> {
+  try {
+    const sql = getNeon()
+    await sql`
+      CREATE TABLE IF NOT EXISTS entity_mapping (
+        entity_name    TEXT PRIMARY KEY,
+        canonical_name TEXT NOT NULL,
+        side           TEXT NOT NULL,
+        updated_at     TIMESTAMPTZ DEFAULT NOW()
+      )
+    `
+    const rows = await sql`SELECT entity_name, canonical_name FROM entity_mapping`
+    const map: Record<string, string> = {}
+    for (const r of rows as unknown as { entity_name: string; canonical_name: string }[]) {
+      map[r.entity_name] = r.canonical_name
+    }
+    return map
+  } catch {
+    return {} // mapping is optional — dashboard still works with raw Zoho names if Neon is unreachable
+  }
+}
 
 interface AgeingBucket { label: string; amount: number }
 
@@ -25,10 +48,11 @@ function isOverdue(due_date: string, balance: number) {
   return balance > 0 && new Date(due_date) < new Date()
 }
 
-function topByEntity<T extends { balance: number }>(items: T[], nameKey: keyof T, n = 5) {
+function topByEntity<T extends { balance: number }>(items: T[], nameKey: keyof T, mapping: Record<string, string>, n = 5) {
   const map: Record<string, { total: number; overdue: number }> = {}
   for (const it of items) {
-    const name = String(it[nameKey] ?? "Unknown")
+    const raw  = String(it[nameKey] ?? "Unknown")
+    const name = mapping[raw] ?? raw
     if (!map[name]) map[name] = { total: 0, overdue: 0 }
     map[name].total += it.balance
     if (isOverdue((it as any).due_date, it.balance)) map[name].overdue += it.balance
@@ -44,8 +68,8 @@ function monthKey(d: string) { return d?.slice(0, 7) ?? "Unknown" }
 
 export async function GET() {
   try {
-    const [invoices, bills, expenses, bankAccounts] = await Promise.all([
-      getInvoices(), getBills(), getExpenses(), getBankAccounts(),
+    const [invoices, bills, expenses, bankAccounts, mapping] = await Promise.all([
+      getInvoices(), getBills(), getExpenses(), getBankAccounts(), getMapping(),
     ])
 
     // ── KPI totals ──────────────────────────────────────────────
@@ -80,8 +104,8 @@ export async function GET() {
       .sort((a, b) => b.amount - a.amount)
 
     // ── Top vendors / customers ──────────────────────────────────
-    const payablesByVendor   = topByEntity(bills as unknown as (ZohoBill & { balance: number })[], "vendor_name")
-    const receivablesByCustomer = topByEntity(invoices as unknown as (ZohoInvoice & { balance: number })[], "customer_name")
+    const payablesByVendor   = topByEntity(bills as unknown as (ZohoBill & { balance: number })[], "vendor_name", mapping)
+    const receivablesByCustomer = topByEntity(invoices as unknown as (ZohoInvoice & { balance: number })[], "customer_name", mapping)
 
     // ── Top overdue invoices/bills ─────────────────────────────
     const overdueBills = bills

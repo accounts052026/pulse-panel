@@ -112,7 +112,7 @@ function DonutCard({ title, data, total, linkId }: { title: string; data: { labe
           ))}
         </div>
       </div>
-      <a href="#" style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 10, display: "inline-block", textDecoration: "none" }}>View details →</a>
+      <a href="/dashboard/entities" style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 10, display: "inline-block", textDecoration: "none" }}>View details →</a>
     </div>
   )
 }
@@ -123,7 +123,10 @@ function TopEntityTable({ title, rows, entityLabel, linkId }:
   const grandOverdue = rows.reduce((s, r) => s + r.overdue, 0)
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 18, flex: 1, minWidth: 340 }} id={linkId}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>{title}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
+        <a href="/dashboard/entities" style={{ fontSize: 11, color: C.blue, fontWeight: 600, textDecoration: "none" }}>View all →</a>
+      </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
           <tr style={{ color: C.dim, textAlign: "left" as const }}>
@@ -294,6 +297,9 @@ export default function ZohoDashboard() {
             <span>{n.icon}</span>{n.label}
           </div>
         ))}
+        <a href="/dashboard/entities" style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.65)", textDecoration: "none" }}>
+          <span>✎</span>Entity Master
+        </a>
         <div style={{ marginTop: "auto", background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: 12, fontSize: 11, color: "rgba(255,255,255,0.6)", display: "flex", gap: 8, alignItems: "center" }}>
           <span>▣</span>
           <div>Data Source<br /><b style={{ color: "#fff" }}>Zoho Books</b></div>
