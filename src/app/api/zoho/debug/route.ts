@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getNeon } from "@/lib/neon"
+import { getCachedInvoices, getCachedBills } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
 
@@ -12,7 +13,18 @@ export async function GET() {
     const invoices = await sql`SELECT invoice_id, customer_name, total, balance, status, pg_typeof(total) AS total_type, pg_typeof(balance) AS balance_type FROM zoho_invoices LIMIT 3`
     const billStats = await sql`SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE balance <> 0) AS nonzero_balance, COUNT(*) FILTER (WHERE total <> 0) AS nonzero_total FROM zoho_bills`
     const invoiceStats = await sql`SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE balance <> 0) AS nonzero_balance, COUNT(*) FILTER (WHERE total <> 0) AS nonzero_total FROM zoho_invoices`
-    return NextResponse.json({ bills, invoices, billStats, invoiceStats })
+
+    let viaHelperInvoices: unknown = null, viaHelperBills: unknown = null, helperError: string | null = null
+    try {
+      const inv = await getCachedInvoices()
+      const bil = await getCachedBills()
+      viaHelperInvoices = { length: inv.length, sample: inv.slice(0, 2) }
+      viaHelperBills = { length: bil.length, sample: bil.slice(0, 2) }
+    } catch (e: unknown) {
+      helperError = e instanceof Error ? e.message : String(e)
+    }
+
+    return NextResponse.json({ bills, invoices, billStats, invoiceStats, viaHelperInvoices, viaHelperBills, helperError })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
