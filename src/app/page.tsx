@@ -842,11 +842,9 @@ function ARAPTab({platforms, dateFrom, dateTo}:{platforms:PlatformCalc[]; dateFr
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
         <NavTab label="Platform Summary" active={view==="summary"} onClick={()=>{setView("summary");setSelP(null)}}/>
         <NavTab label="Waterfall" active={view==="waterfall"} onClick={()=>setView("waterfall")}/>
-        <NavTab label="Vendor / Customer Wise" active={view==="entity"} onClick={()=>setView("entity")}/>
+        <a href="/dashboard/entities" style={{padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:500,color:C.neutral,textDecoration:"none",whiteSpace:"nowrap" as const}}>Vendor / Customer Wise ↗</a>
         {selP && <NavTab label={`${selP} Detail`} active={view==="platform_detail"} onClick={()=>setView("platform_detail")}/>}
       </div>
-
-      {view==="entity" && <EntitySnapshotView dateFrom={dateFrom} dateTo={dateTo}/>}
 
       {/* ── SUMMARY VIEW — platforms as columns ── */}
       {view==="summary" && (()=>{
@@ -1888,6 +1886,7 @@ export default function Home() {
               <NavTab label="AR / AP" active={tab==="arap"} onClick={()=>setTab("arap")}/>
               <NavTab label="P & L"   active={tab==="pl"}   onClick={()=>setTab("pl")}/>
               <NavTab label="Cash Flow" active={tab==="cf"} onClick={()=>setTab("cf")}/>
+              <a href="/dashboard" style={{padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:500,color:C.neutral,textDecoration:"none",whiteSpace:"nowrap" as const}}>Zoho Dashboard ↗</a>
             </div>
           </div>
         </div>
