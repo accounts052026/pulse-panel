@@ -155,7 +155,7 @@ export async function GET() {
 
     return NextResponse.json({
       supabase: sbCounts,
-      neon: Object.fromEntries(neonRes.map((r: { type: string; count: number }) => [r.type, r.count])),
+      neon: Object.fromEntries((neonRes as unknown as { type: string; count: number }[]).map((r) => [r.type, r.count])),
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
