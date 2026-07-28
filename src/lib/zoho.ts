@@ -68,8 +68,13 @@ async function zohoFetch(path: string, extraParams: Record<string, string> = {})
   return data
 }
 
-// Fetch all pages up to a safety cap (avoids runaway calls on very large orgs)
-async function zohoFetchAll(path: string, listKey: string, extraParams: Record<string, string> = {}, maxPages = 10): Promise<any[]> {
+// Fetch every page until Zoho reports no more — each module now syncs
+// independently and quickly (see /api/zoho/sync?module=X), so there's no
+// need for the old 10-page/2000-row safety cap, which was silently dropping
+// real data on any module with more than 2000 records. maxPages is now just
+// an outer sanity ceiling (200 pages = 40,000 rows) to prevent a truly
+// runaway loop, not a realistic limit for normal org sizes.
+async function zohoFetchAll(path: string, listKey: string, extraParams: Record<string, string> = {}, maxPages = 200): Promise<any[]> {
   const out: any[] = []
   let page = 1
   while (page <= maxPages) {
@@ -78,6 +83,8 @@ async function zohoFetchAll(path: string, listKey: string, extraParams: Record<s
     out.push(...rows)
     if (!data.page_context?.has_more_page) break
     page++
+    // small pause between pages to stay well clear of Zoho's per-minute rate limit
+    await new Promise(r => setTimeout(r, 250))
   }
   return out
 }
