@@ -72,9 +72,13 @@ async function zohoFetch(path: string, extraParams: Record<string, string> = {})
 // (syncModuleBatch in zoho-store.ts) which fetches a handful of pages per
 // call instead of the whole module in one shot — large modules like
 // invoices were timing out mid-fetch before any data got written at all.
-export const ZOHO_MODULE_CONFIG: Record<string, { path: string; listKey: string }> = {
-  invoices:         { path: "/invoices",        listKey: "invoices" },
-  bills:            { path: "/bills",           listKey: "bills" },
+export const ZOHO_MODULE_CONFIG: Record<string, { path: string; listKey: string; sortColumn?: string }> = {
+  // sortColumn only set for the two modules big enough (100+ pages) for
+  // pagination drift to plausibly matter — see zohoFetchOnePage below.
+  // Left unset for the rest so this fix can't introduce a new failure on
+  // a module that doesn't recognize "created_time" as a sort column.
+  invoices:         { path: "/invoices",        listKey: "invoices",        sortColumn: "created_time" },
+  bills:            { path: "/bills",           listKey: "bills",           sortColumn: "created_time" },
   creditnotes:      { path: "/creditnotes",      listKey: "creditnotes" },
   vendorcredits:    { path: "/vendorcredits",    listKey: "vendor_credits" },
   customerpayments: { path: "/customerpayments", listKey: "customerpayments" },
@@ -85,8 +89,25 @@ export const ZOHO_MODULE_CONFIG: Record<string, { path: string; listKey: string 
 }
 
 // Fetch exactly one page (used for resumable batch syncing).
-export async function zohoFetchOnePage(path: string, listKey: string, page: number): Promise<{ rows: any[]; hasMore: boolean }> {
-  const data = await zohoFetch(path, { page: String(page), per_page: "200" })
+//
+// sortColumn matters more than it looks here: without an explicit, stable
+// sort, Zoho's default list order is effectively "most recently modified
+// first." For an actively-trading business, invoices/bills are being
+// created or updated continuously — so while a 100+ page sync is in
+// progress, newly touched records keep shifting into earlier pages,
+// pushing others out of the page window entirely. Those pushed-out
+// records never get visited on that pass, and since the next pass starts
+// from page 1 again with the same unstable order, some rows can be
+// permanently skipped no matter how many times the sync "finishes."
+// Sorting by created_time ascending fixes each record's page for the
+// duration of a sync — new records land at the end, not in the middle —
+// which is exactly the kind of gap that would explain cached receivables
+// (1.55 Cr) reading well under Zoho's own total (3.72 Cr) even after a
+// completed sync.
+export async function zohoFetchOnePage(path: string, listKey: string, page: number, sortColumn?: string): Promise<{ rows: any[]; hasMore: boolean }> {
+  const params: Record<string, string> = { page: String(page), per_page: "200" }
+  if (sortColumn) { params.sort_column = sortColumn; params.sort_order = "A" }
+  const data = await zohoFetch(path, params)
   return { rows: data[listKey] ?? [], hasMore: !!data.page_context?.has_more_page }
 }
 

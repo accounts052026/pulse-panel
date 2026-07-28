@@ -207,7 +207,7 @@ export async function syncModuleBatch(module: ZohoModule, pagesPerCall = 15): Pr
     let done = false
 
     for (let i = 0; i < pagesPerCall; i++) {
-      const { rows, hasMore } = await zohoFetchOnePage(config.path, config.listKey, page)
+      const { rows, hasMore } = await zohoFetchOnePage(config.path, config.listKey, page, config.sortColumn)
       for (const r of rows) await upsertRow(module, r)
       fetchedThisCall += rows.length
       if (!hasMore) { done = true; break }
