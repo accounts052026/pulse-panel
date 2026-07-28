@@ -112,17 +112,22 @@ export async function GET() {
     const receivablesByCustomer = topByEntity(invoices, "customer_name", mapping)
 
     // ── Top overdue invoices/bills ─────────────────────────────
+    // party name was previously read straight off the raw Zoho record —
+    // skipping the canonical-name lookup entirely, so this card kept
+    // showing raw/duplicate vendor names even after mapping them in
+    // Entity Master. Apply the same `mapping[raw] ?? raw` lookup used by
+    // the top-vendor/customer tables above.
     const overdueBills = bills
       .filter(b => isOverdue(b.due_date, b.balance))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 10)
-      .map(b => ({ doc_no: b.bill_number, party: b.vendor_name, due_date: b.due_date, overdue: b.balance, side: "payable" as const }))
+      .map(b => ({ doc_no: b.bill_number, party: mapping[b.vendor_name] ?? b.vendor_name, due_date: b.due_date, overdue: b.balance, side: "payable" as const }))
 
     const overdueInvoices = invoices
       .filter(i => isOverdue(i.due_date, i.balance))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 10)
-      .map(i => ({ doc_no: i.invoice_number, party: i.customer_name, due_date: i.due_date, overdue: i.balance, side: "receivable" as const }))
+      .map(i => ({ doc_no: i.invoice_number, party: mapping[i.customer_name] ?? i.customer_name, due_date: i.due_date, overdue: i.balance, side: "receivable" as const }))
 
     // ── Trend — last 6 months ────────────────────────────────────
     const months: string[] = []
