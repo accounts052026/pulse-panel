@@ -6,7 +6,7 @@
 // own short sync call. Rows are upserted in batches.
 
 import { getNeon, rowsOf } from "./neon"
-import { ZOHO_MODULE_CONFIG, zohoFetchOnePage } from "./zoho"
+import { ZOHO_MODULE_CONFIG, zohoFetchOnePage, zohoFetchDetail } from "./zoho"
 
 export const ZOHO_MODULES = [
   "invoices", "bills", "creditnotes", "vendorcredits",
@@ -410,6 +410,89 @@ export async function getDerivedVendorCategories(): Promise<Record<string, strin
 export function canonical(raw: string | null | undefined, mapping: Record<string, string>): string {
   const name = (raw ?? "").trim() || "Unknown"
   return mapping[name] ?? mapping[name.toLowerCase()] ?? name
+}
+
+// ── Credit note line-account enrichment ─────────────────────────
+//
+// Zoho's /creditnotes LIST endpoint returns headers only — no line items —
+// so from the list alone a BDPO/post-sales-discount credit note and an
+// undelivered/returns credit note are indistinguishable. The account each
+// line posts to is the distinguishing signal, and that only comes from the
+// per-credit-note detail endpoint.
+//
+// Fetching ~1,700 details in one request would blow both the serverless
+// time limit and Zoho's rate limit, so this mirrors the resumable pattern
+// used for the main sync: enrich a bounded number of un-enriched rows per
+// call and record progress, so repeated calls converge.
+export async function ensureCreditNoteDetailColumns(): Promise<void> {
+  const sql = getNeon()
+  await sql`ALTER TABLE zoho_creditnotes ADD COLUMN IF NOT EXISTS line_accounts TEXT`
+  await sql`ALTER TABLE zoho_creditnotes ADD COLUMN IF NOT EXISTS detail_synced_at TIMESTAMPTZ`
+}
+
+export async function syncCreditNoteDetailsBatch(limit = 40): Promise<{ processed: number; remaining: number }> {
+  await ensureTables()
+  await ensureCreditNoteDetailColumns()
+  const sql = getNeon()
+  const sqlF = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+
+  const pending = rowsOf<{ creditnote_id: string }>(
+    await sqlF(
+      `SELECT creditnote_id FROM zoho_creditnotes WHERE detail_synced_at IS NULL ORDER BY creditnote_id LIMIT $1`,
+      [limit]
+    )
+  )
+
+  let processed = 0
+  for (const row of pending) {
+    try {
+      const data = await zohoFetchDetail(`/creditnotes/${row.creditnote_id}`)
+      const items = data?.creditnote?.line_items ?? []
+      const accounts = Array.from(
+        new Set(
+          (items as { account_name?: string; description?: string }[])
+            .map(li => (li.account_name || "").trim())
+            .filter(Boolean)
+        )
+      )
+      await sql`
+        UPDATE zoho_creditnotes
+        SET line_accounts = ${JSON.stringify(accounts)}, detail_synced_at = NOW()
+        WHERE creditnote_id = ${row.creditnote_id}
+      `
+      processed++
+      await new Promise(res => setTimeout(res, 200)) // stay clear of Zoho's rate limit
+    } catch {
+      // Mark as attempted with an empty account list so one bad record can't
+      // permanently stall the queue; it simply classifies as "Other".
+      await sql`
+        UPDATE zoho_creditnotes
+        SET line_accounts = COALESCE(line_accounts, '[]'), detail_synced_at = NOW()
+        WHERE creditnote_id = ${row.creditnote_id}
+      `
+      processed++
+    }
+  }
+
+  const remaining = rowsOf<{ n: number }>(
+    await sqlF(`SELECT COUNT(*)::int AS n FROM zoho_creditnotes WHERE detail_synced_at IS NULL`)
+  )[0]?.n ?? 0
+
+  return { processed, remaining }
+}
+
+// Classify a credit note from the accounts its lines post to.
+// Keyword defaults cover the usual Zoho chart-of-accounts naming; anything
+// unrecognised falls to "other" rather than being silently lumped into a
+// bucket it doesn't belong in.
+export type CreditNoteKind = "bdpo" | "returns" | "other"
+
+export function classifyCreditNote(accounts: string[]): CreditNoteKind {
+  const text = accounts.join(" ").toLowerCase()
+  if (!text) return "other"
+  if (/bdpo|brand discount|promo|discount|scheme|rebate/.test(text)) return "bdpo"
+  if (/return|undeliver|damage|short|expiry|expired|rejec/.test(text)) return "returns"
+  return "other"
 }
 
 // ── Server-side aggregation ─────────────────────────────────────

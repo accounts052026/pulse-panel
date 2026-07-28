@@ -1,7 +1,20 @@
 "use client"
 import { useEffect, useState } from "react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
-import { C, fmt, fmtFull, pct, Sidebar } from "@/lib/dashboard-ui"
+import { C, fmt, fmtFull, pct, Sidebar, DateRangeFilter, defaultRange, type DateRange } from "@/lib/dashboard-ui"
+
+interface ReconRow {
+  name: string
+  grossSales: number; returnsCn: number; bdpoCn: number; otherCn: number
+  netSales: number; receipts: number; netReceivable: number
+  bills: number; vendorPayments: number; netPayable: number
+  netSettlement: number; invoiceCount: number
+}
+interface ReconData {
+  rows: ReconRow[]
+  creditNoteAccounts: string[]
+  enrichment: { total: number; done: number; pending: number; unclassifiedNotes: number }
+}
 
 interface PlatformRow { name: string; total: number; overdue: number; count: number; pct: number }
 interface CombinedRow {
@@ -36,6 +49,11 @@ export default function PlatformsPage() {
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("receivable")
   const [hideEmpty, setHideEmpty] = useState(true)
+  const [view, setView] = useState<"balances" | "reconciliation">("reconciliation")
+  const [range, setRange] = useState<DateRange>(defaultRange)
+  const [recon, setRecon] = useState<ReconData | null>(null)
+  const [enriching, setEnriching] = useState(false)
+  const [enrichMsg, setEnrichMsg] = useState("")
 
   useEffect(() => {
     fetch("/api/zoho/platforms", { cache: "no-store" })
@@ -44,6 +62,34 @@ export default function PlatformsPage() {
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
   }, [])
+
+  const loadRecon = (r: DateRange = range) => {
+    fetch(`/api/zoho/reconciliation?from=${r.from}&to=${r.to}`, { cache: "no-store" })
+      .then(res => res.json())
+      .then(d => { if (d.error) setError(d.error); else setRecon(d) })
+      .catch(e => setError(String(e)))
+  }
+
+  useEffect(() => { loadRecon(range) }, [range])
+
+  // Credit note line accounts come from a per-note detail fetch, so this
+  // runs in bounded batches until Zoho has been fully walked.
+  const enrichCreditNotes = async () => {
+    setEnriching(true)
+    try {
+      for (let i = 0; i < 200; i++) {
+        const res = await fetch("/api/zoho/creditnote-details?limit=40", { method: "POST" })
+        const d = await res.json().catch(() => ({ error: "Bad response" }))
+        if (d.error) { setEnrichMsg(`Failed: ${d.error}`); break }
+        setEnrichMsg(`Classifying credit notes… ${d.remaining} remaining`)
+        if (!d.remaining) { setEnrichMsg("Credit notes classified"); break }
+      }
+      loadRecon(range)
+    } finally {
+      setEnriching(false)
+      setTimeout(() => setEnrichMsg(""), 5000)
+    }
+  }
 
   const rows = (data?.combined ?? [])
     .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()))
@@ -84,18 +130,94 @@ export default function PlatformsPage() {
               mapping first, falling back to built-in name matching for anything not yet mapped.
             </div>
           </div>
-          <input
-            placeholder="Search platform…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 13px", fontSize: 13, minWidth: 220, background: C.surface }}
-          />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <DateRangeFilter value={range} onChange={setRange} />
+            <input
+              placeholder="Search platform…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 13px", fontSize: 13, minWidth: 200, background: C.surface }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 4, background: "#F1F3F7", padding: 3, borderRadius: 9, width: "fit-content", marginBottom: 18 }}>
+          <button onClick={() => setView("reconciliation")} style={{ background: view === "reconciliation" ? C.surface : "transparent", boxShadow: view === "reconciliation" ? "0 1px 2px rgba(0,0,0,0.08)" : "none", border: "none", borderRadius: 7, padding: "7px 15px", cursor: "pointer", fontWeight: 700, fontSize: 12, color: view === "reconciliation" ? C.text : C.dim }}>Settlement Reconciliation</button>
+          <button onClick={() => setView("balances")} style={{ background: view === "balances" ? C.surface : "transparent", boxShadow: view === "balances" ? "0 1px 2px rgba(0,0,0,0.08)" : "none", border: "none", borderRadius: 7, padding: "7px 15px", cursor: "pointer", fontWeight: 700, fontSize: 12, color: view === "balances" ? C.text : C.dim }}>Open Balances</button>
         </div>
 
         {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>Loading…</div>}
         {error && <div style={{ background: C.redDim, border: `1px solid ${C.red}33`, borderRadius: 10, padding: "12px 16px", color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
-        {data && (
+        {view === "reconciliation" && recon && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {recon.enrichment.pending > 0 && (
+              <div style={{ background: C.amberDim, border: `1px solid ${C.amber}44`, borderRadius: 10, padding: "12px 16px", fontSize: 12.5, color: C.text, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span>
+                  <b>{recon.enrichment.pending.toLocaleString("en-IN")}</b> of {recon.enrichment.total.toLocaleString("en-IN")} credit notes
+                  aren&apos;t classified yet — until they are, their value sits in <b>Other CN</b> rather than splitting into BDPO vs Returns.
+                </span>
+                <button onClick={enrichCreditNotes} disabled={enriching}
+                  style={{ background: enriching ? "#CBD5E1" : C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: enriching ? "wait" : "pointer" }}>
+                  {enriching ? "Classifying…" : "Classify now"}
+                </button>
+                {enrichMsg && <span style={{ color: C.dim }}>{enrichMsg}</span>}
+              </div>
+            )}
+
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Settlement Reconciliation — {range.label}</div>
+              <div style={{ fontSize: 12, color: C.dim, marginBottom: 14, lineHeight: 1.5 }}>
+                Gross Sales less Returns and BDPO credit notes gives Net Sales; less payments received gives what the platform still owes.
+                Marketing and other bills less vendor payments gives what you owe them. Net Settlement is the difference.
+              </div>
+              <div style={{ overflowX: "auto" as const }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1080 }}>
+                  <thead>
+                    <tr style={{ background: "#F8FAFC", color: C.dim }}>
+                      {["Platform", "Gross Sales", "Returns CN", "BDPO CN", "Other CN", "Net Sales", "Receipts", "Net Receivable", "Bills", "Vendor Paid", "Net Payable", "Net Settlement"].map((h, i) => (
+                        <th key={h} style={{ padding: "10px 10px", textAlign: i === 0 ? "left" as const : "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700, whiteSpace: "nowrap" as const }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recon.rows.filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase())).map(r => {
+                      const cell = (v: number, color?: string, bold?: boolean) => (
+                        <td style={{ padding: "10px 10px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const, color: v ? (color ?? C.text) : C.dim, fontWeight: bold ? 700 : 400 }}>
+                          {v ? fmtFull(v) : "—"}
+                        </td>
+                      )
+                      return (
+                        <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
+                          <td style={{ padding: "10px 10px", fontWeight: 600, whiteSpace: "nowrap" as const }}>
+                            {r.name}
+                            <div style={{ fontSize: 10, color: C.dim, fontWeight: 500, marginTop: 2 }}>{r.invoiceCount} invoices</div>
+                          </td>
+                          {cell(r.grossSales)}
+                          {cell(r.returnsCn, C.red)}
+                          {cell(r.bdpoCn, C.amber)}
+                          {cell(r.otherCn, C.dim)}
+                          {cell(r.netSales, undefined, true)}
+                          {cell(r.receipts, C.green)}
+                          {cell(r.netReceivable, r.netReceivable >= 0 ? C.text : C.red, true)}
+                          {cell(r.bills)}
+                          {cell(r.vendorPayments, C.green)}
+                          {cell(r.netPayable)}
+                          {cell(r.netSettlement, r.netSettlement >= 0 ? C.green : C.red, true)}
+                        </tr>
+                      )
+                    })}
+                    {recon.rows.length === 0 && (
+                      <tr><td colSpan={12} style={{ padding: 24, textAlign: "center" as const, color: C.dim }}>No activity in this period</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === "balances" && data && (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <StatCard label="Total Receivable" value={fmt(totalReceivable)} color={C.green} sub={`${rows.length} platforms`} />

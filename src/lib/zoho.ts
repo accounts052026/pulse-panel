@@ -68,6 +68,14 @@ async function zohoFetch(path: string, extraParams: Record<string, string> = {})
   return data
 }
 
+// Fetch a single record's full detail (list endpoints omit line_items).
+// Used to discover which account each credit note line posts to, which is
+// how a BDPO/discount credit note is distinguished from an undelivered/
+// returns one — the list endpoint gives no way to tell them apart.
+export async function zohoFetchDetail(path: string): Promise<any> {
+  return zohoFetch(path, {})
+}
+
 // Module name → Zoho path/listKey, used by the resumable batch sync
 // (syncModuleBatch in zoho-store.ts) which fetches a handful of pages per
 // call instead of the whole module in one shot — large modules like
