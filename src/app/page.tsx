@@ -732,19 +732,28 @@ function EntitySnapshotView({dateFrom, dateTo}:{dateFrom:string; dateTo:string})
 
   useEffect(load, [dateFrom, dateTo])
 
+  const ZOHO_MODULES = ["invoices", "bills", "creditnotes", "vendorcredits", "customerpayments", "vendorpayments", "journals", "expenses", "bankaccounts"]
+
   const syncNow = async () => {
     setSyncing(true); setSyncMsg("")
-    try {
-      const res = await fetch("/api/zoho/sync", { method: "POST" })
-      const d = await res.json()
-      if (d.error) setSyncMsg("⚠ " + d.error)
-      else { setSyncMsg("✓ Synced from Zoho Books"); load() }
-    } catch (e) {
-      setSyncMsg("⚠ " + String(e))
-    } finally {
-      setSyncing(false)
-      setTimeout(() => setSyncMsg(""), 5000)
+    let failed = 0
+    for (let i = 0; i < ZOHO_MODULES.length; i++) {
+      const m = ZOHO_MODULES[i]
+      setSyncMsg(`Syncing ${m}… (${i + 1}/${ZOHO_MODULES.length})`)
+      try {
+        const res = await fetch(`/api/zoho/sync?module=${m}`, { method: "POST" })
+        const text = await res.text()
+        let d: any
+        try { d = JSON.parse(text) } catch { d = { error: `Non-JSON response (status ${res.status})` } }
+        if (d.error) failed++
+      } catch {
+        failed++
+      }
     }
+    setSyncMsg(failed ? `⚠ Synced with ${failed} module(s) failing` : "✓ Synced from Zoho Books")
+    load()
+    setSyncing(false)
+    setTimeout(() => setSyncMsg(""), 6000)
   }
 
   return (

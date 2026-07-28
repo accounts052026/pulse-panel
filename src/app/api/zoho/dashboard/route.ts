@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server"
-import type { ZohoInvoice, ZohoBill, ZohoExpense, ZohoBankAccount } from "@/lib/zoho"
-import { getCachedModule, getLastSyncedAt } from "@/lib/zoho-store"
+import {
+  getCachedInvoices as getInvoices, getCachedBills as getBills,
+  getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
+  getLastSyncedAt,
+} from "@/lib/zoho-store"
 import { getNeon } from "@/lib/neon"
-
-// Reads from the Neon-cached copy of Zoho data (populated by /api/zoho/sync,
-// on a schedule + manual "Sync now" button) instead of calling Zoho live on
-// every page load — avoids the "too many requests" rate limit.
-const getInvoices     = () => getCachedModule<ZohoInvoice>("invoices")
-const getBills        = () => getCachedModule<ZohoBill>("bills")
-const getExpenses     = () => getCachedModule<ZohoExpense>("expenses")
-const getBankAccounts = () => getCachedModule<ZohoBankAccount>("bankaccounts")
 
 export const dynamic = "force-dynamic"
 
@@ -113,8 +108,8 @@ export async function GET() {
       .sort((a, b) => b.amount - a.amount)
 
     // ── Top vendors / customers ──────────────────────────────────
-    const payablesByVendor   = topByEntity(bills as unknown as (ZohoBill & { balance: number })[], "vendor_name", mapping)
-    const receivablesByCustomer = topByEntity(invoices as unknown as (ZohoInvoice & { balance: number })[], "customer_name", mapping)
+    const payablesByVendor   = topByEntity(bills, "vendor_name", mapping)
+    const receivablesByCustomer = topByEntity(invoices, "customer_name", mapping)
 
     // ── Top overdue invoices/bills ─────────────────────────────
     const overdueBills = bills

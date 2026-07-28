@@ -329,18 +329,31 @@ export default function ZohoDashboard() {
 
   useEffect(() => { load() }, [])
 
+  const MODULES = ["invoices", "bills", "creditnotes", "vendorcredits", "customerpayments", "vendorpayments", "journals", "expenses", "bankaccounts"]
+
+  // Syncs one module at a time (instead of one long request) so a slow
+  // module never times out the whole sync — and if the response ever isn't
+  // JSON (a platform error page, etc.) we don't crash trying to parse it.
   const syncNow = async () => {
     setSyncing(true); setSyncMsg("")
-    try {
-      const res = await fetch("/api/zoho/sync", { method: "POST" })
-      const d = await res.json()
-      if (d.error) { setSyncMsg("⚠ " + d.error) } else { setSyncMsg("✓ Synced from Zoho Books"); load() }
-    } catch (e) {
-      setSyncMsg("⚠ " + String(e))
-    } finally {
-      setSyncing(false)
-      setTimeout(() => setSyncMsg(""), 5000)
+    let failed = 0
+    for (let i = 0; i < MODULES.length; i++) {
+      const m = MODULES[i]
+      setSyncMsg(`Syncing ${m}… (${i + 1}/${MODULES.length})`)
+      try {
+        const res = await fetch(`/api/zoho/sync?module=${m}`, { method: "POST" })
+        const text = await res.text()
+        let d: any
+        try { d = JSON.parse(text) } catch { d = { error: `Non-JSON response (status ${res.status}): ${text.slice(0, 120)}` } }
+        if (d.error) failed++
+      } catch {
+        failed++
+      }
     }
+    setSyncMsg(failed ? `⚠ Synced with ${failed} module(s) failing — see below` : "✓ Synced from Zoho Books")
+    load()
+    setSyncing(false)
+    setTimeout(() => setSyncMsg(""), 6000)
   }
 
   const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
