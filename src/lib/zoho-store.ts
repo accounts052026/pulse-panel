@@ -272,9 +272,11 @@ export async function getLastSyncedAt(): Promise<string | null> {
 // LLP", "Asvah Retail Private Limited", …). Mapping them all to a single
 // canonical platform name is what makes the numbers decision-ready —
 // so this MUST be applied consistently in every view, not just some.
-export async function getEntityMapping(): Promise<Record<string, string>> {
-  const sql = getNeon()
-  await sql`
+export async function readEntityMappingRows(): Promise<{ entity_name: string; canonical_name: string }[]> {
+  const sqlT = getNeon()
+  const sqlF = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+
+  await sqlT`
     CREATE TABLE IF NOT EXISTS entity_mapping (
       entity_name    TEXT PRIMARY KEY,
       canonical_name TEXT NOT NULL,
@@ -282,9 +284,28 @@ export async function getEntityMapping(): Promise<Record<string, string>> {
       updated_at     TIMESTAMPTZ DEFAULT NOW()
     )
   `
-  const res = await sql`SELECT entity_name, canonical_name FROM entity_mapping`
+
+  const QUERY = "SELECT entity_name, canonical_name FROM entity_mapping"
+  type Row = { entity_name: string; canonical_name: string }
+
+  // This table is read through BOTH driver call forms because they have
+  // demonstrably behaved differently in this project: the Zoho tables are
+  // read via the function-call form (sql(text, params)) and work, while
+  // this one used the tagged-template form and came back empty even with
+  // rows visibly present in Neon. Rather than bet on which form is
+  // reliable, try the template form and fall back to the function form
+  // whenever it yields nothing — an empty mapping is never the "correct"
+  // answer when the table has rows, and silently returning one is what
+  // made every mapped name render as its raw Zoho name everywhere.
+  let rows = rowsOf<Row>(await sqlT`SELECT entity_name, canonical_name FROM entity_mapping`)
+  if (rows.length === 0) rows = rowsOf<Row>(await sqlF(QUERY))
+
+  return rows.filter(r => r && typeof r.entity_name === "string" && typeof r.canonical_name === "string")
+}
+
+export async function getEntityMapping(): Promise<Record<string, string>> {
   const map: Record<string, string> = {}
-  for (const r of rowsOf<{ entity_name: string; canonical_name: string }>(res)) {
+  for (const r of await readEntityMappingRows()) {
     map[r.entity_name] = r.canonical_name
     // Also index a trimmed/case-normalised form so a mapping still applies
     // when Zoho returns the same party with stray whitespace or different
