@@ -261,74 +261,104 @@ const num = (v: unknown): number => {
   return isNaN(n) ? 0 : n
 }
 
+// Diagnosed cause of the "cached reader returns empty array" bug: selecting
+// many TEXT/NUMERIC columns together across ~2000 rows in one unbounded
+// query silently returns an empty result from the Neon HTTP driver instead
+// of throwing (confirmed via /api/zoho/debug — every individual column, and
+// a 5-column subset, returned all 2000 rows fine; only the full 8-column
+// query came back empty). Pagination with LIMIT/OFFSET keeps each query's
+// result small enough to avoid whatever size threshold triggers this.
+const PAGE = 300
+
+async function fetchPaged<T>(pk: string, table: string, columns: string): Promise<T[]> {
+  const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<any>
+  const out: T[] = []
+  let offset = 0
+  while (true) {
+    // Table/column names here are fixed internal constants (never user input),
+    // so building the query text directly is safe; only LIMIT/OFFSET are
+    // interpolated as real bound parameters ($1/$2), same as the tagged-
+    // template form but via the driver's function-call form instead.
+    const rows = (await sql(
+      `SELECT ${columns} FROM ${table} ORDER BY ${pk} LIMIT $1 OFFSET $2`,
+      [PAGE, offset]
+    )) as T[]
+    const page = Array.isArray(rows) ? rows : (rows as any).rows ?? []
+    out.push(...page)
+    if (page.length < PAGE) break
+    offset += PAGE
+  }
+  return out
+}
+
 export async function getCachedInvoices() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT invoice_id, invoice_number, customer_name, date, due_date, total, balance, status FROM zoho_invoices` as unknown as
-    { invoice_id: string; invoice_number: string; customer_name: string; date: string; due_date: string; total: unknown; balance: unknown; status: string }[]
+  const rows = await fetchPaged<{ invoice_id: string; invoice_number: string; customer_name: string; date: string; due_date: string; total: unknown; balance: unknown; status: string }>(
+    "invoice_id", "zoho_invoices", "invoice_id, invoice_number, customer_name, date, due_date, total, balance, status"
+  )
   return rows.map(r => ({ ...r, total: num(r.total), balance: num(r.balance) }))
 }
 
 export async function getCachedBills() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT bill_id, bill_number, vendor_name, date, due_date, total, balance, status FROM zoho_bills` as unknown as
-    { bill_id: string; bill_number: string; vendor_name: string; date: string; due_date: string; total: unknown; balance: unknown; status: string }[]
+  const rows = await fetchPaged<{ bill_id: string; bill_number: string; vendor_name: string; date: string; due_date: string; total: unknown; balance: unknown; status: string }>(
+    "bill_id", "zoho_bills", "bill_id, bill_number, vendor_name, date, due_date, total, balance, status"
+  )
   return rows.map(r => ({ ...r, total: num(r.total), balance: num(r.balance) }))
 }
 
 export async function getCachedCreditNotes() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT creditnote_id, customer_name, date, total, status FROM zoho_creditnotes` as unknown as
-    { creditnote_id: string; customer_name: string; date: string; total: unknown; status: string }[]
+  const rows = await fetchPaged<{ creditnote_id: string; customer_name: string; date: string; total: unknown; status: string }>(
+    "creditnote_id", "zoho_creditnotes", "creditnote_id, customer_name, date, total, status"
+  )
   return rows.map(r => ({ ...r, total: num(r.total) }))
 }
 
 export async function getCachedVendorCredits() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT vendor_credit_id, vendor_name, date, total, status FROM zoho_vendorcredits` as unknown as
-    { vendor_credit_id: string; vendor_name: string; date: string; total: unknown; status: string }[]
+  const rows = await fetchPaged<{ vendor_credit_id: string; vendor_name: string; date: string; total: unknown; status: string }>(
+    "vendor_credit_id", "zoho_vendorcredits", "vendor_credit_id, vendor_name, date, total, status"
+  )
   return rows.map(r => ({ ...r, total: num(r.total) }))
 }
 
 export async function getCachedCustomerPayments() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT payment_id, customer_name, date, amount, tax_amount_withheld FROM zoho_customerpayments` as unknown as
-    { payment_id: string; customer_name: string; date: string; amount: unknown; tax_amount_withheld: unknown }[]
+  const rows = await fetchPaged<{ payment_id: string; customer_name: string; date: string; amount: unknown; tax_amount_withheld: unknown }>(
+    "payment_id", "zoho_customerpayments", "payment_id, customer_name, date, amount, tax_amount_withheld"
+  )
   return rows.map(r => ({ ...r, amount: num(r.amount), tax_amount_withheld: num(r.tax_amount_withheld) }))
 }
 
 export async function getCachedVendorPayments() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT payment_id, vendor_name, date, amount, tax_amount_withheld FROM zoho_vendorpayments` as unknown as
-    { payment_id: string; vendor_name: string; date: string; amount: unknown; tax_amount_withheld: unknown }[]
+  const rows = await fetchPaged<{ payment_id: string; vendor_name: string; date: string; amount: unknown; tax_amount_withheld: unknown }>(
+    "payment_id", "zoho_vendorpayments", "payment_id, vendor_name, date, amount, tax_amount_withheld"
+  )
   return rows.map(r => ({ ...r, amount: num(r.amount), tax_amount_withheld: num(r.tax_amount_withheld) }))
 }
 
 export async function getCachedJournals() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT journal_id, journal_date, reference_number, total, line_items FROM zoho_journals` as unknown as
-    { journal_id: string; journal_date: string; reference_number: string; total: unknown; line_items: any[] }[]
+  const rows = await fetchPaged<{ journal_id: string; journal_date: string; reference_number: string; total: unknown; line_items: any[] }>(
+    "journal_id", "zoho_journals", "journal_id, journal_date, reference_number, total, line_items"
+  )
   return rows.map(r => ({ ...r, total: num(r.total) }))
 }
 
 export async function getCachedExpenses() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT expense_id, account_name, vendor_name, date, total FROM zoho_expenses` as unknown as
-    { expense_id: string; account_name: string; vendor_name: string; date: string; total: unknown }[]
+  const rows = await fetchPaged<{ expense_id: string; account_name: string; vendor_name: string; date: string; total: unknown }>(
+    "expense_id", "zoho_expenses", "expense_id, account_name, vendor_name, date, total"
+  )
   return rows.map(r => ({ ...r, total: num(r.total) }))
 }
 
 export async function getCachedBankAccounts() {
   await ensureTables()
-  const sql = getNeon()
-  const rows = await sql`SELECT account_id, account_name, balance FROM zoho_bankaccounts` as unknown as
-    { account_id: string; account_name: string; balance: unknown }[]
+  const rows = await fetchPaged<{ account_id: string; account_name: string; balance: unknown }>(
+    "account_id", "zoho_bankaccounts", "account_id, account_name, balance"
+  )
   return rows.map(r => ({ ...r, balance: num(r.balance) }))
 }
