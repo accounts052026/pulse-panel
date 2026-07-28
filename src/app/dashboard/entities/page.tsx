@@ -36,16 +36,25 @@ function EntityTable({ side, rows, onSave, onReset, search }:
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" as const }}>
+        <colgroup>
+          <col style={{ width: "26%" }} />
+          <col style={{ width: "26%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "8%" }} />
+        </colgroup>
         <thead>
           <tr style={{ background: "#F8FAFC", color: C.dim, textAlign: "left" as const }}>
-            <th style={{ padding: "8px 12px" }}>Raw Entity Name (from Zoho)</th>
-            <th style={{ padding: "8px 12px" }}>Canonical Vendor / Customer</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" as const }}>Total (₹)</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" as const }}>Overdue (₹)</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" as const }}>Docs</th>
-            <th style={{ padding: "8px 12px" }}>Status</th>
-            <th style={{ padding: "8px 12px" }}></th>
+            <th style={{ padding: "10px 12px", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const }}>Raw Entity Name (from Zoho)</th>
+            <th style={{ padding: "10px 12px", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const }}>Canonical Vendor / Customer</th>
+            <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const }}>Total (₹)</th>
+            <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const }}>Overdue (₹)</th>
+            <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const }}>Docs</th>
+            <th style={{ padding: "10px 12px", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const }}>Status</th>
+            <th style={{ padding: "10px 12px" }}></th>
           </tr>
         </thead>
         <tbody>
@@ -57,31 +66,32 @@ function EntityTable({ side, rows, onSave, onReset, search }:
             const dirty = draft !== r.canonical_name
             return (
               <tr key={r.entity_name} style={{ borderTop: `1px solid ${C.border}` }}>
-                <td style={{ padding: "8px 12px", fontWeight: 600 }}>{r.entity_name}</td>
-                <td style={{ padding: "8px 12px" }}>
+                <td style={{ padding: "10px 12px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }} title={r.entity_name}>{r.entity_name}</td>
+                <td style={{ padding: "10px 12px" }}>
                   <input
                     value={draft}
                     onChange={e => setDrafts(d => ({ ...d, [r.entity_name]: e.target.value }))}
-                    style={{ border: `1px solid ${dirty ? C.accent : C.border}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, width: "100%", minWidth: 160 }}
+                    title={draft}
+                    style={{ border: `1px solid ${dirty ? C.accent : C.border}`, borderRadius: 6, padding: "6px 8px", fontSize: 12, width: "100%", boxSizing: "border-box" as const }}
                   />
                 </td>
-                <td style={{ padding: "8px 12px", textAlign: "right" as const }}>{fmtFull(r.total)}</td>
-                <td style={{ padding: "8px 12px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
-                <td style={{ padding: "8px 12px", textAlign: "right" as const }}>{r.count}</td>
-                <td style={{ padding: "8px 12px" }}>
+                <td style={{ padding: "10px 12px", textAlign: "right" as const }}>{fmtFull(r.total)}</td>
+                <td style={{ padding: "10px 12px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
+                <td style={{ padding: "10px 12px", textAlign: "right" as const }}>{r.count}</td>
+                <td style={{ padding: "10px 12px" }}>
                   {r.mapped
-                    ? <span style={{ background: "#16A34A15", color: C.green, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>MAPPED</span>
-                    : <span style={{ background: "#64748B15", color: C.dim, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>RAW</span>}
+                    ? <span style={{ background: "#16A34A15", color: C.green, fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 10, whiteSpace: "nowrap" as const }}>MAPPED</span>
+                    : <span style={{ background: "#64748B15", color: C.dim, fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 10, whiteSpace: "nowrap" as const }}>RAW</span>}
                 </td>
-                <td style={{ padding: "8px 12px", whiteSpace: "nowrap" as const }}>
+                <td style={{ padding: "10px 12px", whiteSpace: "nowrap" as const }}>
                   {dirty && (
                     <button
                       onClick={() => { onSave({ ...r, canonical_name: draft }); setDrafts(d => { const n = { ...d }; delete n[r.entity_name]; return n }) }}
-                      style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 6 }}
+                      style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 6 }}
                     >Save</button>
                   )}
                   {r.mapped && !dirty && (
-                    <button onClick={() => onReset(r.entity_name)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: C.dim }}>Reset</button>
+                    <button onClick={() => onReset(r.entity_name)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", color: C.dim }}>Reset</button>
                   )}
                 </td>
               </tr>
@@ -115,21 +125,43 @@ export default function EntityMasterPage() {
   const rows = tab === "payable" ? data?.payables.raw ?? [] : data?.receivables.raw ?? []
   const side = tab
 
+  // Both actions now check the actual response instead of assuming success —
+  // a silent failure here previously showed a green "Saved" message even
+  // when the write never happened, which is exactly what made the mapping
+  // look broken (it was failing quietly, not doing nothing).
   const save = async (r: RawEntity) => {
-    await fetch("/api/entity-mapping", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entity_name: r.entity_name, canonical_name: r.canonical_name, side }),
-    })
-    setMsg(`Saved: ${r.entity_name} → ${r.canonical_name}`)
-    setTimeout(() => setMsg(""), 3000)
-    load()
+    try {
+      const res = await fetch("/api/entity-mapping", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity_name: r.entity_name, canonical_name: r.canonical_name, side }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || d.error) {
+        setError(`Save failed for "${r.entity_name}": ${d.error || res.statusText}`)
+        return
+      }
+      setMsg(`Saved: ${r.entity_name} → ${r.canonical_name}`)
+      setTimeout(() => setMsg(""), 3000)
+      load()
+    } catch (e) {
+      setError(`Save failed for "${r.entity_name}": ${String(e)}`)
+    }
   }
 
   const reset = async (entity_name: string) => {
-    await fetch(`/api/entity-mapping?entity_name=${encodeURIComponent(entity_name)}`, { method: "DELETE" })
-    setMsg(`Reset: ${entity_name}`)
-    setTimeout(() => setMsg(""), 3000)
-    load()
+    try {
+      const res = await fetch(`/api/entity-mapping?entity_name=${encodeURIComponent(entity_name)}`, { method: "DELETE" })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || d.error) {
+        setError(`Reset failed for "${entity_name}": ${d.error || res.statusText}`)
+        return
+      }
+      setMsg(`Reset: ${entity_name}`)
+      setTimeout(() => setMsg(""), 3000)
+      load()
+    } catch (e) {
+      setError(`Reset failed for "${entity_name}": ${String(e)}`)
+    }
   }
 
   const mappedCount = useMemo(() => rows.filter(r => r.mapped).length, [rows])

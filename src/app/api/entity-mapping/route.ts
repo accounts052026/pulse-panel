@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
     await ensureTable()
     const sql = getNeon()
     const body = await req.json()
-    const { entity_name, canonical_name, side } = body
+    // entity_name is NOT trimmed — it must stay byte-identical to the raw
+    // vendor_name/customer_name Zoho returns (which is what /api/zoho/entities
+    // uses as the lookup key), otherwise a mapping silently never matches.
+    const entity_name    = typeof body.entity_name === "string" ? body.entity_name : ""
+    const canonical_name = typeof body.canonical_name === "string" ? body.canonical_name.trim() : ""
+    const side            = typeof body.side === "string" ? body.side.trim() : ""
     if (!entity_name || !canonical_name || !side) {
       return NextResponse.json({ error: "entity_name, canonical_name, side are required" }, { status: 400 })
     }

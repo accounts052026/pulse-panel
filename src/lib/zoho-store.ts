@@ -174,14 +174,26 @@ const TABLE_FOR_MODULE: Record<string, string> = {
   expenses: "zoho_expenses", bankaccounts: "zoho_bankaccounts",
 }
 
-// Resumable batch sync — fetches only a handful of Zoho pages per call
-// (default 4 pages = up to 800 rows) instead of the whole module at once.
-// A cursor (zoho_sync_cursor) tracks which page to continue from, so large
-// modules like invoices — which were timing out mid-fetch before writing
-// anything at all — now make guaranteed forward progress on every call,
-// even if it takes several calls to finish. The UI's "Sync Zoho Now"
-// button calls this repeatedly per module until `done` comes back true.
-export async function syncModuleBatch(module: ZohoModule, pagesPerCall = 4): Promise<{ module: string; fetchedThisCall: number; totalRows: number; done: boolean; nextPage: number }> {
+// Resumable batch sync — fetches only a bounded number of Zoho pages per
+// call instead of the whole module at once. A cursor (zoho_sync_cursor)
+// tracks which page to continue from, so large modules like invoices —
+// which were timing out mid-fetch before writing anything at all — now
+// make guaranteed forward progress on every call, even if it takes several
+// calls to finish. The UI's "Sync Zoho Now" button calls this repeatedly
+// per module until `done` comes back true.
+//
+// pagesPerCall was originally 4 — fine for small modules (bills is only
+// ~17 pages), but invoices runs ~110+ pages. At 4 pages/call, the daily
+// cron (one call per module per day) would take the better part of a
+// month to complete a single full pass, leaving the cached invoice total
+// silently under-reporting real Zoho balances in the meantime (exactly
+// what caused the dashboard to show ~1.55 Cr receivables against Zoho's
+// own ~3.72 Cr). 15 pages/call (~3000 rows, well under Vercel's 60s
+// function limit even with the 250ms inter-page delay) clears a module
+// this size in roughly a week of daily cron runs instead of a month, and
+// the manual "Sync Zoho" button — which loops calls until done — now
+// needs far fewer round trips to fully catch up in one sitting.
+export async function syncModuleBatch(module: ZohoModule, pagesPerCall = 15): Promise<{ module: string; fetchedThisCall: number; totalRows: number; done: boolean; nextPage: number }> {
   await ensureTables()
   const sql = getNeon()
   const config = ZOHO_MODULE_CONFIG[module]
