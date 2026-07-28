@@ -98,7 +98,10 @@ function DonutCard({ title, data, total, linkId, href }: { title: string; data: 
             <div style={{ fontSize: 9, color: C.dim, textAlign: "center" }}>Total</div>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 11, flex: 1 }}>
+        {/* Capped + scrollable: expense categories can run to 18+ entries,
+            which made this card far taller than the donuts beside it and
+            left a large blank gap under them. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 11, flex: 1, maxHeight: 168, overflowY: "auto" as const, paddingRight: 4 }}>
           {chartData.map((d, i) => (
             <div key={d.label} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -125,7 +128,13 @@ function TopEntityTable({ title, rows, entityLabel, linkId, href }:
         <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
         <a href={href} style={{ fontSize: 11, color: C.blue, fontWeight: 600, textDecoration: "none" }}>View all →</a>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" as const }}>
+        <colgroup>
+          <col style={{ width: "34%" }} />
+          <col style={{ width: "23%" }} />
+          <col style={{ width: "23%" }} />
+          <col style={{ width: "20%" }} />
+        </colgroup>
         <thead>
           <tr style={{ color: C.dim, textAlign: "left" as const }}>
             <th style={{ padding: "4px 8px 8px", fontWeight: 600, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>{entityLabel}</th>
@@ -141,13 +150,13 @@ function TopEntityTable({ title, rows, entityLabel, linkId, href }:
           {rows.map(r => (
             <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
               <td style={{ padding: "9px 8px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                   <EntityAvatar name={r.name} />
-                  <span style={{ fontWeight: 600 }}>{r.name}</span>
+                  <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }} title={r.name}>{r.name}</span>
                 </div>
               </td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const }}>{fmtFull(r.total)}</td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
+              <td style={{ padding: "9px 8px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(r.total)}</td>
+              <td style={{ padding: "9px 8px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
               <td style={{ padding: "9px 8px", textAlign: "right" as const }}><OverduePill value={r.pct} /></td>
             </tr>
           ))}
@@ -156,8 +165,8 @@ function TopEntityTable({ title, rows, entityLabel, linkId, href }:
           <tfoot>
             <tr style={{ borderTop: `2px solid ${C.border}`, fontWeight: 700 }}>
               <td style={{ padding: "10px 8px" }}>Total</td>
-              <td style={{ padding: "10px 8px", textAlign: "right" as const }}>{fmtFull(grandTotal)}</td>
-              <td style={{ padding: "10px 8px", textAlign: "right" as const, color: C.red }}>{fmtFull(grandOverdue)}</td>
+              <td style={{ padding: "10px 8px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(grandTotal)}</td>
+              <td style={{ padding: "10px 8px", textAlign: "right" as const, color: C.red, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(grandOverdue)}</td>
               <td style={{ padding: "10px 8px", textAlign: "right" as const }}><OverduePill value={grandTotal ? (grandOverdue / grandTotal) * 100 : 0} /></td>
             </tr>
           </tfoot>
@@ -179,13 +188,23 @@ function OverdueInvoicesCard({ rows }: { rows: DashboardData["overdueTop"] }) {
           <button onClick={() => setTab("receivable")} style={{ background: tab === "receivable" ? C.surface : "transparent", boxShadow: tab === "receivable" ? "0 1px 2px rgba(0,0,0,0.08)" : "none", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 700, fontSize: 11, color: tab === "receivable" ? C.blue : C.dim }}>Receivables</button>
         </div>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      {/* tableLayout:fixed + explicit widths keep every row the same height —
+          previously the date column was too narrow, so "10 Feb 2026" wrapped
+          onto two lines on some rows and one on others, making the rows
+          visibly uneven. */}
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" as const }}>
+        <colgroup>
+          <col style={{ width: "27%" }} />
+          <col style={{ width: "28%" }} />
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "23%" }} />
+        </colgroup>
         <thead>
           <tr style={{ color: C.dim, textAlign: "left" as const }}>
             <th style={{ padding: "4px 8px 8px", fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Doc No.</th>
             <th style={{ padding: "4px 8px 8px", fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Vendor / Customer</th>
-            <th style={{ padding: "4px 8px 8px", fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Due Date</th>
-            <th style={{ padding: "4px 8px 8px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Overdue (₹)</th>
+            <th style={{ padding: "4px 8px 8px", fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>Due Date</th>
+            <th style={{ padding: "4px 8px 8px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>Overdue (₹)</th>
           </tr>
         </thead>
         <tbody>
@@ -194,10 +213,12 @@ function OverdueInvoicesCard({ rows }: { rows: DashboardData["overdueTop"] }) {
           )}
           {filtered.map(r => (
             <tr key={r.doc_no} style={{ borderTop: `1px solid ${C.border}` }}>
-              <td style={{ padding: "9px 8px", fontFamily: "monospace", fontSize: 11 }}>{r.doc_no}</td>
-              <td style={{ padding: "9px 8px" }}>{r.party}</td>
-              <td style={{ padding: "9px 8px", color: C.dim }}>{new Date(r.due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
-              <td style={{ padding: "9px 8px", textAlign: "right" as const, color: C.red, fontWeight: 700 }}>{fmtFull(r.overdue)}</td>
+              <td style={{ padding: "9px 8px", fontFamily: "monospace", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }} title={r.doc_no}>{r.doc_no}</td>
+              <td style={{ padding: "9px 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }} title={r.party}>{r.party}</td>
+              <td style={{ padding: "9px 8px", color: C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>
+                {new Date(r.due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+              </td>
+              <td style={{ padding: "9px 8px", textAlign: "right" as const, color: C.red, fontWeight: 700, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(r.overdue)}</td>
             </tr>
           ))}
         </tbody>
@@ -355,22 +376,25 @@ export default function ZohoDashboard() {
                 sub="As on today" link="cashflow" />
             </div>
 
-            {/* Ageing donuts + expense category */}
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            {/* Ageing donuts + expense category.
+                alignItems:flex-start stops flex from stretching every card to
+                the tallest one in the row — that stretching is what produced
+                the empty white area under the shorter cards. */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
               <DonutCard title="Payables by Ageing" data={data.payablesAgeing} total={data.kpis.totalPayables} linkId="payables" href="/dashboard/ageing" />
               <DonutCard title="Receivables by Ageing" data={data.receivablesAgeing} total={data.kpis.totalReceivables} linkId="receivables" href="/dashboard/ageing" />
               <DonutCard title="Expenses by Category (MTD)" data={data.expenseByCategory} total={data.kpis.expensesThisMonth} linkId="expenses" href="/dashboard/reports" />
             </div>
 
             {/* Top vendor/customer tables + overdue */}
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
               <TopEntityTable title="Payables by Vendor (Top 5)" rows={data.payablesByVendor.top} entityLabel="Vendor" linkId="payables-vendor" href="/dashboard/payables" />
               <TopEntityTable title="Receivables by Customer (Top 5)" rows={data.receivablesByCustomer.top} entityLabel="Customer" linkId="receivables-customer" href="/dashboard/receivables" />
               <OverdueInvoicesCard rows={data.overdueTop} />
             </div>
 
             {/* Trends */}
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
               <TrendChart trend={data.trend} />
               <ExpenseTrendChart trend={data.trend} />
               <SummaryCard summary={data.summary} />

@@ -67,7 +67,7 @@ export default function CashflowPage() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 2, minWidth: 420, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
                 <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Inflow vs Outflow (Last 6 Months)</div>
                 <ResponsiveContainer width="100%" height={260}>
