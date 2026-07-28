@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zoho → Supabase Import | Pulse Panel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+  header { background: #0f172a; color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header span { font-size: 11px; color: #94a3b8; }
+  .container { max-width: 960px; margin: 20px auto; padding: 0 16px; }
+  .card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .drop-zone { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 44px 24px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; }
+  .drop-zone:hover,.drop-zone.drag-over { border-color: #7c3aed; background: #faf5ff; }
+  .drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
+  .drop-zone h2 { font-size: 15px; font-weight: 600; color: #334155; margin-bottom: 4px; }
+  .drop-zone p { font-size: 12px; color: #64748b; }
+  input[type=file] { display: none; }
+  .file-list { display: flex; flex-direction: column; gap: 8px; }
+  .file-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; flex-wrap: wrap; transition: all .2s; }
+  .file-row.done  { border-color: #86efac; background: #f0fdf4; }
+  .file-row.error { border-color: #fca5a5; background: #fff1f2; }
+  .file-row.saving { border-color: #c4b5fd; background: #faf5ff; }
+  .file-name { flex: 1; font-size: 13px; font-weight: 500; color: #1e293b; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .badge.ar  { background: #dcfce7; color: #166534; }
+  .badge.ap  { background: #fee2e2; color: #991b1b; }
+  .rows-count { font-size: 12px; color: #64748b; white-space: nowrap; }
+  .status-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+  select.tx-select { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 12px; background: white; cursor: pointer; }
+  .btn { padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: opacity .15s; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary   { background: #7c3aed; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #6d28d9; }
+  .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+  .btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
+  .btn-danger    { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  .progress-bar-wrap { height: 4px; border-radius: 2px; background: #e2e8f0; width: 120px; flex-shrink: 0; overflow: hidden; }
+  .progress-bar  { height: 100%; background: #7c3aed; transition: width .3s; border-radius: 2px; }
+  .log-box { background: #0f172a; color: #94a3b8; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 12px; line-height: 1.7; max-height: 220px; overflow-y: auto; margin-top: 8px; white-space: pre-wrap; }
+  .log-ok   { color: #86efac; }
+  .log-err  { color: #fca5a5; }
+  .log-info { color: #7dd3fc; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .header-row h2 { font-size: 15px; font-weight: 700; color: #1e293b; }
+  .freeze-notice { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #1e40af; display: flex; gap: 8px; margin-bottom: 14px; }
+  .total-banner { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; color: #166534; display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .stat-inline { display: inline-flex; gap: 18px; }
+  .stat-inline .s { text-align: center; }
+  .stat-inline .sv { font-size: 20px; font-weight: 700; color: #7c3aed; }
+  .stat-inline .sl { font-size: 10px; color: #64748b; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>⚡ Zoho → Supabase Direct Import</h1>
+    <span>CurryIT · Pulse Panel · accounts052026's Org</span>
+  </div>
+  <span style="font-size:11px;color:#475569;">🔒 FY 2025-26 data is frozen and protected</span>
+</header>
+
+<div class="container">
+
+  <div class="freeze-notice">
+    🔒 <div><strong>Freeze protection ON.</strong> Existing rows with date ≤ 31-Mar-2026 are never deleted or overwritten. Only data from 1-Apr-2026 onwards is replaced on each import.</div>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="card">
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">📂</div>
+      <h2>Drop all Zoho export files here</h2>
+      <p>Select multiple .xlsx / .xls files — type auto-detected from filename</p>
+    </div>
+    <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv">
+  </div>
+
+  <!-- File list -->
+  <div id="fileSection" style="display:none" class="card">
+    <div class="header-row">
+      <div>
+        <h2>Files to import</h2>
+        <div class="stat-inline" id="totals" style="margin-top:6px"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="importBtn" onclick="importAll()" disabled>⚡ Import All to Supabase</button>
+        <button class="btn btn-secondary" onclick="clearAll()">✕ Clear</button>
+      </div>
+    </div>
+    <div class="file-list" id="fileList"></div>
+    <div id="logBox" class="log-box" style="display:none"></div>
+  </div>
+
+</div>
+
+<script>
+// ── Supabase client ───────────────────────────────────────────
+const SUPABASE_URL  = "https://qmzvgcmqadljrreqlvxz.supabase.co"
+const SUPABASE_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtenZnY21xYWRsanJyZXFsdnh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjcyNDMsImV4cCI6MjA5Nzk0MzI0M30.oMCIflBbI7PlzqRS3SfhevbCF6t3TwyCwhdoT5O5qV8"
+const FREEZE_DATE   = "2026-03-31"
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+// ── Type detection ────────────────────────────────────────────
+function detectTxType(filename) {
+  const f = filename.toLowerCase()
+  if (f.includes("vendor_payment") || f.includes("payment_made"))      return "payment_made"
+  if (f.includes("vendor_credit")  || f.includes("debit_note"))        return "vendor_credit"
+  if (f.includes("bill"))                                                return "bill_received"
+  if (f.includes("customer_payment")|| f.includes("payment_received"))  return "payment_received"
+  if (f.includes("credit_note"))                                         return "credit_note"
+  if (f.includes("invoice")        || f.includes("sales"))              return "sales_invoice"
+  return "sales_invoice"
+}
+
+const TX_LABELS = {
+  sales_invoice:    { label:"Sales Invoice",     ar:true  },
+  credit_note:      { label:"Credit Note",       ar:true  },
+  payment_received: { label:"Payment Received",  ar:true  },
+  bill_received:    { label:"Bill Received",      ar:false },
+  vendor_credit:    { label:"Vendor Credit",      ar:false },
+  payment_made:     { label:"Payment Made",       ar:false },
+}
+
+// ── Platform detection ────────────────────────────────────────
+const PLATFORM_KW = {
+  "Blinkit":  ["blinkit","blink it","grofers","blinkit b2b"],
+  "Swiggy":   ["swiggy","bundl technologies","scootsy"],
+  "Zepto":    ["zepto","kiranakart","kairana cart","zeptonow"],
+  "Amazon":   ["amazon","amazon seller","amazon retail","cloudtail","appario"],
+  "Flipkart": ["flipkart","ekart","myntra","jabong","shopsy"],
+  "BigBasket":["bigbasket","supermarket grocery","innovative retail"],
+  "Dunzo":    ["dunzo"],
+  "Instamart":["instamart"],
+  "Nykaa":    ["nykaa","fsh fashions"],
+  "Meesho":   ["meesho","fashnear"],
+}
+function detectPlatform(entity) {
+  if (!entity) return "Other"
+  const e = entity.toLowerCase()
+  for (const [p, kws] of Object.entries(PLATFORM_KW))
+    if (kws.some(k => e.includes(k))) return p
+  return "Other"
+}
+
+// ── Column matchers ───────────────────────────────────────────
+const MATCHERS = {
+  entity:           ["customer name","vendor name","supplier name","party name","bill to","customer","vendor","entity","client","contact name","payee"],
+  date:             ["invoice date","bill date","payment date","date","created time","txn date","transaction date"],
+  document_no:      ["invoice#","invoice #","invoice number","invoice no","bill#","bill no","payment#","payment no","doc no","voucher no","reference#","ref no","credit note#","credit note number"],
+  invoice_no:       ["invoice#","invoice #","invoice number","invoice no"],
+  order_number:     ["order number","po number","purchase order","order#"],
+  subject:          ["subject","invoice subject","description of supply"],
+  due_date:         ["due date","payment due","due by"],
+  payment_date:     ["payment date","paid date","date of payment"],
+  payment_terms:    ["payment terms","terms","net days"],
+  status:           ["invoice status","payment status","status","state"],
+  gstin:            ["gstin","gst identification","gst number","vendor gstin","customer gstin"],
+  gst_treatment:    ["gst treatment","tax treatment"],
+  place_of_supply:  ["place of supply","supply state","destination state"],
+  reverse_charge:   ["reverse charge","rcm"],
+  billing_address:  ["billing address","bill to address"],
+  shipping_address: ["shipping address","ship to","delivery address"],
+  sales_person:     ["sales person","salesperson","sales rep"],
+  branch:           ["branch","location","warehouse"],
+  account:          ["account","ledger account","account name","payment account","paid through"],
+  currency:         ["currency","currency code"],
+  exchange_rate:    ["exchange rate","forex rate"],
+  item_name:        ["item name","product name","service name","item","product","service"],
+  item_description: ["item description","product description","description","particulars"],
+  item_sku:         ["sku","item sku","product code","item code"],
+  item_unit:        ["unit","uom","unit of measure"],
+  hsn_sac:          ["hsn/sac","hsn code","sac code","hsn","sac"],
+  qty:              ["quantity","qty","units","no. of units"],
+  rate:             ["rate","unit price","selling price","price","rate/item"],
+  discount:         ["item discount","discount amount","discount"],
+  item_tax_name:    ["item tax name","tax name","gst name","tax type"],
+  item_tax_pct:     ["item tax %","tax %","tax rate","gst %"],
+  item_tax_amount:  ["item tax amount","tax amount","line tax"],
+  sub_total:        ["sub total","subtotal","taxable amount","taxable value"],
+  total_tax:        ["total tax","tax total","total gst"],
+  adjustment:       ["adjustment","rounding","round off"],
+  total:            ["total","invoice total","grand total","bill total","net total","amount paid"],
+  balance_due:      ["balance due","amount due","outstanding","balance"],
+  igst:             ["igst amount","igst","integrated tax"],
+  cgst:             ["cgst amount","cgst","central tax"],
+  sgst:             ["sgst amount","sgst","utgst amount","utgst","state tax"],
+  cess:             ["cess amount","cess"],
+  tds:              ["tds","tax deducted","withholding tax","tcs"],
+  amount:           ["item total","item amount","line total","amount","net amount","value","amount paid"],
+  debit:            ["debit","dr","dr amount"],
+  credit:           ["credit","cr","cr amount"],
+  notes:            ["notes","customer notes","remarks","narration","memo"],
+  terms:            ["terms","terms & conditions"],
+}
+
+function detectCol(headers, keys) {
+  const lh = headers.map(h => (h||"").toLowerCase().trim())
+  for (const k of keys) {
+    const i = lh.findIndex(h => h === k || h.includes(k))
+    if (i >= 0) return i
+  }
+  return -1
+}
+function parseNum(s) {
+  if (typeof s === "number") return isNaN(s) ? 0 : s
+  return parseFloat((s||"").toString().replace(/[₹$,\s()]/g,"")) || 0
+}
+function normDate(s) {
+  if (!s) return null
+  const str = s.toString().trim()
+  const dmy = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/)
+  if (dmy) { const y = dmy[3].length===2?"20"+dmy[3]:dmy[3]; return `${y}-${dmy[2].padStart(2,"0")}-${dmy[1].padStart(2,"0")}` }
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0,10)
+  const n = parseInt(str)
+  if (n>40000&&n<60000) return new Date((n-25569)*86400*1000).toISOString().slice(0,10)
+  const d = new Date(str)
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0,10)
+  return null
+}
+
+// ── State ─────────────────────────────────────────────────────
+let fileEntries = []
+
+// ── Drop zone ─────────────────────────────────────────────────
+const dropZone = document.getElementById("dropZone")
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over") })
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"))
+dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("drag-over"); handleFiles(e.dataTransfer.files) })
+document.getElementById("fileInput").addEventListener("change", e => handleFiles(e.target.files))
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /\.(xlsx|xls|csv)$/i.test(f.name))
+  for (const f of files) {
+    if (fileEntries.find(e => e.file.name === f.name)) continue
+    const entry = { file: f, txType: detectTxType(f.name), status: "parsing", rows: [], rowCount: 0 }
+    fileEntries.push(entry)
+    renderList()
+    await parseEntry(entry)
+    renderList()
+  }
+}
+
+async function parseEntry(entry) {
+  try {
+    const buf = await entry.file.arrayBuffer()
+    const wb  = XLSX.read(buf, { type:"array", cellDates:true, raw:false })
+    const ws  = wb.Sheets[wb.SheetNames[0]]
+    const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:"", raw:false })
+
+    let hi = 0
+    for (let i = 0; i < Math.min(15, raw.length); i++) {
+      if (raw[i] && raw[i].filter(c => c?.toString().trim()).length >= 3) { hi = i; break }
+    }
+
+    const headers  = (raw[hi] || []).map(h => h?.toString().trim() || "")
+    const dataRows = raw.slice(hi+1).filter(r => r && r.some && r.some(c => c?.toString().trim()))
+    const cm = Object.fromEntries(Object.entries(MATCHERS).map(([f,k]) => [f, detectCol(headers, k)]))
+    const g  = (row, f) => cm[f] >= 0 ? (row[cm[f]]?.toString().trim() || "") : ""
+    const gn = (row, f) => parseNum(g(row, f))
+
+    entry.rows = dataRows.map(row => {
+      const entity = g(row, "entity")
+      const qty = gn(row,"qty"), rate = gn(row,"rate"), discount = gn(row,"discount")
+      const debit = gn(row,"debit"), credit = gn(row,"credit")
+      let amount = gn(row,"amount") || gn(row,"total")
+      if (!amount && qty && rate) amount = qty * rate - discount
+      if (!amount) amount = Math.abs(debit-credit) || debit || credit
+
+      const raw_data = {}
+      headers.forEach((h,i) => { if (h) raw_data[h] = row[i]?.toString() || "" })
+
+      return {
+        type:             entry.txType,
+        date:             normDate(g(row,"date")) || new Date().toISOString().slice(0,10),
+        due_date:         normDate(g(row,"due_date")),
+        payment_date:     normDate(g(row,"payment_date")),
+        document_no:      g(row,"document_no") || g(row,"invoice_no"),
+        invoice_no:       g(row,"invoice_no")  || g(row,"document_no"),
+        order_number:     g(row,"order_number") || null,
+        subject:          g(row,"subject") || null,
+        status:           g(row,"status") || "Open",
+        payment_terms:    g(row,"payment_terms") || null,
+        platform:         detectPlatform(entity) || "Other",
+        entity,
+        gstin:            g(row,"gstin") || null,
+        gst_treatment:    g(row,"gst_treatment") || null,
+        place_of_supply:  g(row,"place_of_supply") || null,
+        reverse_charge:   g(row,"reverse_charge") || null,
+        billing_address:  g(row,"billing_address") || null,
+        shipping_address: g(row,"shipping_address") || null,
+        sales_person:     g(row,"sales_person") || null,
+        branch:           g(row,"branch") || null,
+        account:          g(row,"account") || null,
+        currency:         g(row,"currency") || "INR",
+        exchange_rate:    parseNum(g(row,"exchange_rate")) || 1,
+        item_name:        g(row,"item_name") || null,
+        item_description: g(row,"item_description") || null,
+        item_sku:         g(row,"item_sku") || null,
+        item_unit:        g(row,"item_unit") || null,
+        description:      g(row,"item_description") || g(row,"item_name") || null,
+        hsn_sac:          g(row,"hsn_sac") || null,
+        qty, rate, discount,
+        sub_total:        gn(row,"sub_total"),
+        total_tax:        gn(row,"total_tax"),
+        adjustment:       gn(row,"adjustment"),
+        total:            gn(row,"total"),
+        balance_due:      gn(row,"balance_due"),
+        debit, credit, amount,
+        igst:             gn(row,"igst"),
+        cgst:             gn(row,"cgst"),
+        sgst:             gn(row,"sgst"),
+        cess:             gn(row,"cess"),
+        tds:              gn(row,"tds"),
+        item_tax_name:    g(row,"item_tax_name") || null,
+        item_tax_pct:     gn(row,"item_tax_pct"),
+        item_tax_amount:  gn(row,"item_tax_amount"),
+        notes:            g(row,"notes") || null,
+        terms:            g(row,"terms") || null,
+        raw_data,
+      }
+    }).filter(r => r.entity || r.document_no || r.amount || r.item_name)
+
+    entry.rowCount = entry.rows.length
+    entry.status   = "ready"
+  } catch(e) {
+    entry.status = "error"
+    entry.errMsg = e.message
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────
+function renderList() {
+  const section = document.getElementById("fileSection")
+  const list    = document.getElementById("fileList")
+  const btn     = document.getElementById("importBtn")
+  const ready   = fileEntries.filter(e => e.status === "ready")
+  const totalRows = ready.reduce((a,e) => a+e.rowCount, 0)
+
+  section.style.display = fileEntries.length ? "block" : "none"
+  btn.disabled = ready.length === 0
+
+  const totDiv = document.getElementById("totals")
+  totDiv.innerHTML = `<div class="stat-inline">
+    <div class="s"><div class="sv">${ready.length}</div><div class="sl">files ready</div></div>
+    <div class="s"><div class="sv">${totalRows.toLocaleString("en-IN")}</div><div class="sl">total rows</div></div>
+  </div>`
+
+  list.innerHTML = ""
+  fileEntries.forEach((entry, idx) => {
+    const meta = TX_LABELS[entry.txType]
+    const statusIcon = { parsing:"🔄", ready:"✓", error:"❌", saving:"⏳", done:"✅" }[entry.status] || "⏸"
+    const cls = { done:"done", error:"error", saving:"saving" }[entry.status] || ""
+
+    const row = document.createElement("div")
+    row.className = `file-row ${cls}`
+    row.id = `row-${idx}`
+
+    // Build select
+    const sel = document.createElement("select")
+    sel.className = "tx-select"
+    Object.entries(TX_LABELS).forEach(([k,v]) => {
+      const o = document.createElement("option")
+      o.value = k; o.textContent = v.label; if (k===entry.txType) o.selected = true
+      sel.appendChild(o)
+    })
+    sel.addEventListener("change", async () => {
+      fileEntries[idx].txType = sel.value
+      fileEntries[idx].status = "parsing"; fileEntries[idx].rows = []; fileEntries[idx].rowCount = 0
+      renderList()
+      await parseEntry(fileEntries[idx])
+      renderList()
+    })
+
+    const progressWrap = document.createElement("div")
+    progressWrap.className = "progress-bar-wrap"
+    progressWrap.style.display = "none"
+    const progressBar = document.createElement("div")
+    progressBar.className = "progress-bar"
+    progressBar.style.width = "0%"
+    progressWrap.appendChild(progressBar)
+
+    row.innerHTML = `
+      <span class="status-icon" id="icon-${idx}">${statusIcon}</span>
+      <span class="file-name">${entry.file.name}</span>
+      <span class="badge ${meta.ar?"ar":"ap"}">${meta.label}</span>
+      ${entry.rowCount ? `<span class="rows-count" id="rc-${idx}">${entry.rowCount.toLocaleString("en-IN")} rows</span>` : `<span class="rows-count" id="rc-${idx}"></span>`}
+      ${entry.errMsg ? `<span style="font-size:11px;color:#dc2626;flex:1">${entry.errMsg}</span>` : ""}
+    `
+    row.insertBefore(sel, row.children[2])
+    row.appendChild(progressWrap)
+    list.appendChild(row)
+    entry._progressWrap = progressWrap
+    entry._progressBar  = progressBar
+  })
+}
+
+// ── Import all ────────────────────────────────────────────────
+let logEl = null
+function log(msg, cls="") {
+  if (!logEl) return
+  const line = document.createElement("span")
+  line.className = cls
+  line.textContent = msg + "\n"
+  logEl.appendChild(line)
+  logEl.scrollTop = logEl.scrollHeight
+}
+
+async function importAll() {
+  const ready = fileEntries.filter(e => e.status === "ready" && e.rows.length)
+  if (!ready.length) return
+
+  document.getElementById("importBtn").disabled = true
+  const logBox = document.getElementById("logBox")
+  logBox.style.display = "block"
+  logBox.innerHTML = ""
+  logEl = logBox
+
+  log("Starting import…", "log-info")
+  let grandTotal = 0
+
+  for (const entry of ready) {
+    entry.status = "saving"
+    renderList()
+
+    log(`\n▸ ${entry.file.name} (${TX_LABELS[entry.txType].label}, ${entry.rowCount.toLocaleString()} rows)`, "log-info")
+
+    // Delete existing live rows for this type (only post-freeze)
+    log(`  Deleting live rows for type=${entry.txType} (date > ${FREEZE_DATE})…`)
+    const { error: delErr } = await sb.from("pp_transactions")
+      .delete().eq("type", entry.txType).gt("date", FREEZE_DATE)
+    if (delErr) { log(`  ✗ Delete failed: ${delErr.message}`, "log-err"); entry.status="error"; entry.errMsg=delErr.message; renderList(); continue }
+    log(`  ✓ Old live rows cleared`, "log-ok")
+
+    // Insert in 50-row batches
+    const CHUNK = 50
+    let saved = 0, failed = 0
+    entry._progressWrap.style.display = "block"
+    entry._progressBar.style.width = "0%"
+
+    for (let c = 0; c < entry.rows.length; c += CHUNK) {
+      const batch = entry.rows.slice(c, c + CHUNK)
+      const { error: insErr } = await sb.from("pp_transactions").insert(batch)
+      if (insErr) {
+        log(`  ✗ Batch ${Math.floor(c/CHUNK)+1} failed: ${insErr.message}`, "log-err")
+        failed += batch.length
+      } else {
+        saved += batch.length
+      }
+      const pct = Math.round(((c + CHUNK) / entry.rows.length) * 100)
+      entry._progressBar.style.width = Math.min(pct,100) + "%"
+      // Update row counter
+      const rcEl = document.getElementById(`rc-${fileEntries.indexOf(entry)}`)
+      if (rcEl) rcEl.textContent = `${saved.toLocaleString()} / ${entry.rowCount.toLocaleString()} saved`
+      await new Promise(r => setTimeout(r, 0))
+    }
+
+    grandTotal += saved
+    if (failed === 0) {
+      entry.status = "done"
+      log(`  ✅ Done — ${saved.toLocaleString()} rows saved`, "log-ok")
+    } else {
+      entry.status = "error"
+      entry.errMsg = `${failed} rows failed`
+      log(`  ⚠ Done with errors — ${saved} saved, ${failed} failed`, "log-err")
+    }
+    renderList()
+  }
+
+  log(`\n🎉 Import complete — ${grandTotal.toLocaleString()} rows in Supabase`, "log-ok")
+  document.getElementById("importBtn").disabled = false
+}
+
+function clearAll() {
+  fileEntries = []
+  renderList()
+  document.getElementById("logBox").style.display = "none"
+  document.getElementById("fileInput").value = ""
+}
+</script>
+</body>
+</html>

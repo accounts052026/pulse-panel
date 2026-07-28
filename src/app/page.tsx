@@ -361,6 +361,21 @@ interface PlatformCalc {
   // raw accrual from summary row
   accrualAR: number
   accrualAP: number
+  // entity-wise breakdown (customer-wise AR, vendor-wise AP)
+  arEntities: Record<string, EntityBucket>
+  apEntities: Record<string, EntityBucket>
+}
+
+interface EntityBucket {
+  invoiced:        number
+  payment:         number
+  creditDebitNote: number
+  journal:         number
+  tds:             number
+}
+
+function emptyBucket(): EntityBucket {
+  return { invoiced: 0, payment: 0, creditDebitNote: 0, journal: 0, tds: 0 }
 }
 
 function extractPlatformData(rows: string[][], name: string, color: string, dateFrom?: Date, dateTo?: Date): PlatformCalc {
@@ -389,6 +404,9 @@ function extractPlatformData(rows: string[][], name: string, color: string, date
   let invoice=0, returns=0, payment=0, bfd=0, arAdj=0, tds=0
   let apInvoice=0, apPayment=0, debitNote=0, tdsDed=0, apAdj=0
 
+  const arEntities: Record<string, EntityBucket> = {}
+  const apEntities: Record<string, EntityBucket> = {}
+
   for (let i = dataStart; i < rows.length; i++) {
     const r = rows[i]
     if (!r || r.length < 6) continue
@@ -401,8 +419,9 @@ function extractPlatformData(rows: string[][], name: string, color: string, date
     }
 
     // AR side
-    const arType = r[1]?.trim().toLowerCase() || ""
-    const arAmt  = n(r[5]) // Amount col F
+    const arType   = r[1]?.trim().toLowerCase() || ""
+    const arAmt    = n(r[5]) // Amount col F
+    const arEntity = r[8]?.trim() || name  // Entity col I, fallback to platform name
 
     if (arAmt !== 0) {
       if (arType === "invoice") invoice += arAmt
@@ -411,12 +430,20 @@ function extractPlatformData(rows: string[][], name: string, color: string, date
       else if (arType === "brand funded discount") bfd += arAmt
       else if (arType === "ar/ap adjustments" || arType === "ar/ap adjustment") arAdj += arAmt
       else if (arType === "tds deducted" || arType === "tds receivable") tds += arAmt
+
+      const bucket = arEntities[arEntity] ?? (arEntities[arEntity] = emptyBucket())
+      if (arType === "invoice") bucket.invoiced += arAmt
+      else if (arType === "payment") bucket.payment += Math.abs(arAmt)
+      else if (arType === "returns" || arType === "return" || arType === "brand funded discount") bucket.creditDebitNote += arAmt
+      else if (arType === "tds deducted" || arType === "tds receivable") bucket.tds += Math.abs(arAmt)
+      else if (arType === "journal" || arType === "journal entry" || arType === "ar/ap adjustments" || arType === "ar/ap adjustment") bucket.journal += arAmt
     }
 
     // AP side (col 11 = transactions, col 15 = amount)
     if (r.length > 11) {
-      const apType = r[11]?.trim().toLowerCase() || ""
-      const apAmt  = n(r[15]) // Amount col P
+      const apType   = r[11]?.trim().toLowerCase() || ""
+      const apAmt    = n(r[15]) // Amount col P
+      const apEntity = r[18]?.trim() || name  // Entity col S, fallback to platform name
 
       if (apAmt !== 0) {
         if (apType === "invoice") apInvoice += apAmt
@@ -424,6 +451,13 @@ function extractPlatformData(rows: string[][], name: string, color: string, date
         else if (apType === "debit note") debitNote += apAmt
         else if (apType === "tds deducted") tdsDed += apAmt
         else if (apType === "ar/ap adjustments" || apType === "ar/ap adjustment") apAdj += apAmt
+
+        const bucket = apEntities[apEntity] ?? (apEntities[apEntity] = emptyBucket())
+        if (apType === "invoice") bucket.invoiced += apAmt
+        else if (apType === "payment") bucket.payment += apAmt
+        else if (apType === "debit note") bucket.creditDebitNote += apAmt
+        else if (apType === "tds deducted") bucket.tds += Math.abs(apAmt)
+        else if (apType === "journal" || apType === "journal entry" || apType === "ar/ap adjustments" || apType === "ar/ap adjustment") bucket.journal += apAmt
       }
     }
   }
@@ -449,7 +483,40 @@ function extractPlatformData(rows: string[][], name: string, color: string, date
     adjustments: arAdj, ar4,
     apInvoice, apPayment, ap1, debitNote, ap2, tdsDed, ap3, apAdj, ap4,
     net, accrualAR, accrualAP,
+    arEntities, apEntities,
   }
+}
+
+// ─── ENTITY-WISE SNAPSHOT (customer-wise AR, vendor-wise AP) ─────────────────
+interface EntityRow extends EntityBucket {
+  entity:  string
+  balance: number
+}
+
+function mergeEntityMaps(platforms: PlatformCalc[], side: "ar" | "ap"): EntityRow[] {
+  const merged: Record<string, EntityBucket> = {}
+  for (const p of platforms) {
+    const src = side === "ar" ? p.arEntities : p.apEntities
+    for (const [entity, b] of Object.entries(src)) {
+      const bucket = merged[entity] ?? (merged[entity] = emptyBucket())
+      bucket.invoiced        += b.invoiced
+      bucket.payment         += b.payment
+      bucket.creditDebitNote += b.creditDebitNote
+      bucket.journal         += b.journal
+      bucket.tds             += b.tds
+    }
+  }
+  return Object.entries(merged)
+    .map(([entity, b]) => ({
+      entity,
+      ...b,
+      // AR: invoiced − payment + creditDebitNote(neg) − tds + journal
+      // AP: invoiced + payment(neg) + creditDebitNote(signed) − tds + journal
+      balance: side === "ar"
+        ? b.invoiced - b.payment + b.creditDebitNote - b.tds + b.journal
+        : b.invoiced + b.payment + b.creditDebitNote - b.tds + b.journal,
+    }))
+    .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
 }
 
 // ─── CF EXTRACTOR ─────────────────────────────────────────────────────────────
@@ -573,8 +640,84 @@ function BarChart({data,height=100}:{data:{label:string;value:number}[];height?:
 }
 
 // ─── AR/AP TAB ────────────────────────────────────────────────────────────────
+function EntitySnapshotTable({rows, side}:{rows: EntityRow[]; side: "ar" | "ap"}) {
+  const label = side === "ar" ? "Customer / Entity" : "Vendor / Entity"
+  const total = rows.reduce((acc, r) => ({
+    invoiced: acc.invoiced + r.invoiced,
+    payment: acc.payment + r.payment,
+    creditDebitNote: acc.creditDebitNote + r.creditDebitNote,
+    journal: acc.journal + r.journal,
+    tds: acc.tds + r.tds,
+    balance: acc.balance + r.balance,
+  }), {invoiced:0,payment:0,creditDebitNote:0,journal:0,tds:0,balance:0})
+
+  return (
+    <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead>
+          <tr>
+            <Th>{label}</Th>
+            <Th>Invoiced Amount</Th>
+            <Th>Bank Payment</Th>
+            <Th>Credit / Debit Note</Th>
+            <Th>Journal</Th>
+            <Th>TDS</Th>
+            <Th>Balance</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr><td colSpan={7} style={{padding:20,textAlign:"center" as const,color:C.dimText}}>No {side === "ar" ? "receivable" : "payable"} entries found</td></tr>
+          )}
+          {rows.map((r,i) => (
+            <tr key={r.entity} style={{background: i%2===0 ? C.surface : C.surfaceAlt+"55", borderTop:`1px solid ${C.border}`}}>
+              <td style={{padding:"8px 12px",fontWeight:600,whiteSpace:"nowrap" as const}}>{r.entity}</td>
+              <td style={{padding:"8px 12px",textAlign:"right" as const}}>{fmt(r.invoiced)}</td>
+              <td style={{padding:"8px 12px",textAlign:"right" as const}}>{r.payment ? fmt(r.payment) : "—"}</td>
+              <td style={{padding:"8px 12px",textAlign:"right" as const}}>{r.creditDebitNote ? fmt(r.creditDebitNote) : "—"}</td>
+              <td style={{padding:"8px 12px",textAlign:"right" as const}}>{r.journal ? fmt(r.journal) : "—"}</td>
+              <td style={{padding:"8px 12px",textAlign:"right" as const}}>{r.tds ? fmt(r.tds) : "—"}</td>
+              <td style={{padding:"8px 12px",textAlign:"right" as const,fontWeight:700,color:r.balance<0?C.negative:C.positive}}>{fmt(r.balance)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {rows.length > 0 && (
+          <tfoot>
+            <tr style={{borderTop:`2px solid ${C.border}`,background:C.surfaceAlt,fontWeight:700}}>
+              <td style={{padding:"10px 12px"}}>Total</td>
+              <td style={{padding:"10px 12px",textAlign:"right" as const}}>{fmt(total.invoiced)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right" as const}}>{fmt(total.payment)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right" as const}}>{fmt(total.creditDebitNote)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right" as const}}>{fmt(total.journal)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right" as const}}>{fmt(total.tds)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right" as const,color:total.balance<0?C.negative:C.positive}}>{fmt(total.balance)}</td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  )
+}
+
+function EntitySnapshotView({platforms}:{platforms:PlatformCalc[]}) {
+  const arRows = mergeEntityMaps(platforms, "ar")
+  const apRows = mergeEntityMaps(platforms, "ap")
+  return (
+    <div style={{display:"flex",flexDirection:"column" as const,gap:20}}>
+      <div>
+        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.positive,marginBottom:8}}>◆ Receivables — Customer Wise</div>
+        <EntitySnapshotTable rows={arRows} side="ar"/>
+      </div>
+      <div>
+        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.negative,marginBottom:8}}>◆ Payables — Vendor Wise</div>
+        <EntitySnapshotTable rows={apRows} side="ap"/>
+      </div>
+    </div>
+  )
+}
+
 function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
-  const [view,setView] = useState<"summary"|"waterfall"|"platform_detail">("summary")
+  const [view,setView] = useState<"summary"|"waterfall"|"platform_detail"|"entity">("summary")
   const [selP,setSelP] = useState<string|null>(null)
 
   const totAR4 = platforms.reduce((s,p)=>s+p.ar4,0)
@@ -628,8 +771,11 @@ function ARAPTab({platforms}:{platforms:PlatformCalc[]}) {
       <div style={{display:"flex",gap:6,marginBottom:16,background:C.surfaceAlt,padding:4,borderRadius:10,width:"fit-content"}}>
         <NavTab label="Platform Summary" active={view==="summary"} onClick={()=>{setView("summary");setSelP(null)}}/>
         <NavTab label="Waterfall" active={view==="waterfall"} onClick={()=>setView("waterfall")}/>
+        <NavTab label="Vendor / Customer Wise" active={view==="entity"} onClick={()=>setView("entity")}/>
         {selP && <NavTab label={`${selP} Detail`} active={view==="platform_detail"} onClick={()=>setView("platform_detail")}/>}
       </div>
+
+      {view==="entity" && <EntitySnapshotView platforms={platforms}/>}
 
       {/* ── SUMMARY VIEW — platforms as columns ── */}
       {view==="summary" && (()=>{
