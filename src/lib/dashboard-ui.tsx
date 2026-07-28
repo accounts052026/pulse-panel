@@ -180,8 +180,8 @@ export function DateRangeFilter({ value, onChange }: { value: DateRange; onChang
 
 export function Sidebar({ active }: { active: string }) {
   return (
-    {/* sticky + own scroll so the nav stays put instead of scrolling out of
-        view and leaving an empty dark column beside the content. */}
+    // sticky + own scroll so the nav stays put instead of scrolling out of
+    // view and leaving an empty dark column beside the content.
     <aside style={{
       width: 224, background: C.navy, color: "#fff", padding: "20px 14px",
       display: "flex", flexDirection: "column", gap: 3,
