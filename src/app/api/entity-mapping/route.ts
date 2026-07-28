@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getNeon } from "@/lib/neon"
+import { getNeon, rowsOf } from "@/lib/neon"
 
 export const dynamic = "force-dynamic"
 
@@ -15,17 +15,20 @@ async function ensureTable() {
   `
 }
 
-// GET → { "raw entity name": { canonical_name, side } }
+// GET → { count, rows: [...], map: { "raw entity name": {canonical_name, side} } }
+// Visiting this URL directly is the quickest way to see whether mappings
+// are actually landing in the table, independent of any UI.
 export async function GET() {
   try {
     await ensureTable()
     const sql = getNeon()
-    const rows = await sql`SELECT entity_name, canonical_name, side FROM entity_mapping`
+    const res = await sql`SELECT entity_name, canonical_name, side, updated_at FROM entity_mapping ORDER BY updated_at DESC`
+    const rows = rowsOf<{ entity_name: string; canonical_name: string; side: string; updated_at: string }>(res)
     const map: Record<string, { canonical_name: string; side: string }> = {}
-    for (const r of rows as unknown as { entity_name: string; canonical_name: string; side: string }[]) {
+    for (const r of rows) {
       map[r.entity_name] = { canonical_name: r.canonical_name, side: r.side }
     }
-    return NextResponse.json(map)
+    return NextResponse.json({ count: rows.length, rows, map })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -55,7 +58,29 @@ export async function POST(req: NextRequest) {
         side           = EXCLUDED.side,
         updated_at     = NOW()
     `
-    return NextResponse.json({ ok: true })
+
+    // Read the row straight back and confirm it actually persisted. Every
+    // previous version of this endpoint returned {ok:true} as soon as the
+    // INSERT didn't throw, so any failure to persist looked identical to
+    // success from the UI — which is exactly how mappings could report
+    // "Saved" and then come back unmapped on reload with nothing to debug.
+    const check = rowsOf<{ entity_name: string; canonical_name: string }>(
+      await sql`SELECT entity_name, canonical_name FROM entity_mapping WHERE entity_name = ${entity_name}`
+    )
+    if (check.length === 0) {
+      return NextResponse.json(
+        { error: `Write did not persist for "${entity_name}" — the INSERT reported success but the row is not readable back.` },
+        { status: 500 }
+      )
+    }
+    if (check[0].canonical_name !== canonical_name) {
+      return NextResponse.json(
+        { error: `Write mismatch for "${entity_name}": stored "${check[0].canonical_name}" but expected "${canonical_name}".` },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ ok: true, saved: check[0] })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
