@@ -24,7 +24,12 @@ export async function GET() {
       helperError = e instanceof Error ? e.message : String(e)
     }
 
-    return NextResponse.json({ bills, invoices, billStats, invoiceStats, viaHelperInvoices, viaHelperBills, helperError })
+    // Same 8-column query text as getCachedInvoices, but run directly here —
+    // isolates whether it's the query itself or the wrapping function.
+    const inlineFullCols = await sql`SELECT invoice_id, invoice_number, customer_name, date, due_date, total, balance, status FROM zoho_invoices`
+    const inlineFullColsLength = (inlineFullCols as unknown as any[]).length
+
+    return NextResponse.json({ bills, invoices, billStats, invoiceStats, viaHelperInvoices, viaHelperBills, helperError, inlineFullColsLength })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
