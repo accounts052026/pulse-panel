@@ -331,23 +331,35 @@ export default function ZohoDashboard() {
 
   const MODULES = ["invoices", "bills", "creditnotes", "vendorcredits", "customerpayments", "vendorpayments", "journals", "expenses", "bankaccounts"]
 
-  // Syncs one module at a time (instead of one long request) so a slow
-  // module never times out the whole sync — and if the response ever isn't
-  // JSON (a platform error page, etc.) we don't crash trying to parse it.
+  // Each call to /api/zoho/sync?module=X pulls just a few pages (a "batch")
+  // and reports back done:true once that module has no more pages left.
+  // Large modules (invoices especially) need several batches to finish —
+  // looping here instead of a single call means we always make forward
+  // progress instead of one long request timing out with nothing saved.
   const syncNow = async () => {
     setSyncing(true); setSyncMsg("")
     let failed = 0
     for (let i = 0; i < MODULES.length; i++) {
       const m = MODULES[i]
-      setSyncMsg(`Syncing ${m}… (${i + 1}/${MODULES.length})`)
-      try {
-        const res = await fetch(`/api/zoho/sync?module=${m}`, { method: "POST" })
-        const text = await res.text()
-        let d: any
-        try { d = JSON.parse(text) } catch { d = { error: `Non-JSON response (status ${res.status}): ${text.slice(0, 120)}` } }
-        if (d.error) failed++
-      } catch {
-        failed++
+      let done = false
+      let batch = 0
+      let rowsSoFar = 0
+      while (!done) {
+        batch++
+        setSyncMsg(`Syncing ${m}… module ${i + 1}/${MODULES.length}, batch ${batch} (${rowsSoFar} rows so far)`)
+        try {
+          const res = await fetch(`/api/zoho/sync?module=${m}`, { method: "POST" })
+          const text = await res.text()
+          let d: any
+          try { d = JSON.parse(text) } catch { d = { error: `Non-JSON response (status ${res.status}): ${text.slice(0, 120)}` } }
+          if (d.error) { failed++; break }
+          done = !!d.done
+          rowsSoFar = d.totalRows ?? rowsSoFar
+          if (batch > 50) break // safety valve — shouldn't normally trigger
+        } catch {
+          failed++
+          break
+        }
       }
     }
     setSyncMsg(failed ? `⚠ Synced with ${failed} module(s) failing — see below` : "✓ Synced from Zoho Books")

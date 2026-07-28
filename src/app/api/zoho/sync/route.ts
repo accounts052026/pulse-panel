@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { syncModule, getSyncStatus, ZOHO_MODULES, type ZohoModule } from "@/lib/zoho-store"
+import { syncModuleBatch, getSyncStatus, ZOHO_MODULES, type ZohoModule } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
-// GET /api/zoho/sync             → cron: syncs ALL modules, one at a time
-// GET /api/zoho/sync?module=bills → syncs just that one module (fast, used by the UI's step-by-step sync)
-// GET /api/zoho/sync?status=1     → just returns last-sync status, no syncing
+// GET /api/zoho/sync                → cron: runs one batch (few pages) per module, sequentially
+// GET /api/zoho/sync?module=bills   → runs one batch for just that module — call repeatedly
+//                                      (see the UI's "Sync Zoho Now" loop) until `done: true`
+// GET /api/zoho/sync?status=1       → just returns last-sync status, no syncing
 export async function GET(req: NextRequest) {
   const module = req.nextUrl.searchParams.get("module")
   const statusOnly = req.nextUrl.searchParams.get("status") === "1"
@@ -20,22 +21,22 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (module) return syncOne(module as ZohoModule)
-  return syncAllSequential()
+  if (module) return syncOneBatch(module as ZohoModule)
+  return syncAllOneBatchEach()
 }
 
 export async function POST(req: NextRequest) {
   const module = req.nextUrl.searchParams.get("module")
-  if (module) return syncOne(module as ZohoModule)
-  return syncAllSequential()
+  if (module) return syncOneBatch(module as ZohoModule)
+  return syncAllOneBatchEach()
 }
 
-async function syncOne(module: ZohoModule) {
+async function syncOneBatch(module: ZohoModule) {
   if (!ZOHO_MODULES.includes(module)) {
     return NextResponse.json({ error: `Unknown module "${module}"` }, { status: 400 })
   }
   try {
-    const result = await syncModule(module)
+    const result = await syncModuleBatch(module)
     return NextResponse.json({ ok: true, ...result })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -43,20 +44,20 @@ async function syncOne(module: ZohoModule) {
   }
 }
 
-// Used by the cron job — syncs every module in one request. Each module is
-// independently try/caught so one failure (e.g. a transient Zoho hiccup)
-// doesn't stop the rest, and a short pause between modules keeps us well
-// clear of Zoho's rate limit.
-async function syncAllSequential() {
-  const results: { module: string; count?: number; error?: string }[] = []
+// Used by the cron job — runs ONE batch (a few pages) per module per call.
+// A module with a lot of data won't fully finish in a single cron run, but
+// it makes guaranteed forward progress every time (via the resumable page
+// cursor in zoho_sync_cursor) rather than either "all or nothing" timing
+// out, or racing to cram everything into one request.
+async function syncAllOneBatchEach() {
+  const results: { module: string; fetchedThisCall?: number; totalRows?: number; done?: boolean; error?: string }[] = []
   for (const module of ZOHO_MODULES) {
     try {
-      const r = await syncModule(module)
+      const r = await syncModuleBatch(module)
       results.push(r)
     } catch (err: unknown) {
       results.push({ module, error: err instanceof Error ? err.message : String(err) })
     }
-    await new Promise(r => setTimeout(r, 400))
   }
   return NextResponse.json({ ok: true, synced_at: new Date().toISOString(), results })
 }

@@ -6,11 +6,7 @@
 // own short sync call. Rows are upserted in batches.
 
 import { getNeon } from "./neon"
-import {
-  getInvoices, getBills, getCreditNotes, getVendorCredits,
-  getCustomerPayments, getVendorPayments, getJournals,
-  getExpenses, getBankAccounts,
-} from "./zoho"
+import { ZOHO_MODULE_CONFIG, zohoFetchOnePage } from "./zoho"
 
 export const ZOHO_MODULES = [
   "invoices", "bills", "creditnotes", "vendorcredits",
@@ -74,156 +70,158 @@ async function ensureTables() {
     CREATE TABLE IF NOT EXISTS zoho_sync_status (
       module TEXT PRIMARY KEY, row_count INT, synced_at TIMESTAMPTZ, error TEXT
     )`
+  await sql`
+    CREATE TABLE IF NOT EXISTS zoho_sync_cursor (
+      module TEXT PRIMARY KEY, next_page INT NOT NULL DEFAULT 1, done BOOLEAN NOT NULL DEFAULT false
+    )`
 }
 
-// Sync exactly one module: fetch from Zoho, batch-upsert into its table.
-// Short-lived and independent — a failure or slowness in one module never
-// affects the others, and each call comfortably fits well inside any
-// serverless function time limit.
-export async function syncModule(module: ZohoModule): Promise<{ module: string; count: number }> {
+// Upsert a single row from Zoho into the right table. Kept as one row at a
+// time (not a bulk multi-row INSERT) to match the tagged-template style
+// used everywhere else in this file — simple and safe, if not the fastest.
+async function upsertRow(module: string, r: any): Promise<void> {
+  const sql = getNeon()
+  switch (module) {
+    case "invoices":
+      await sql`
+        INSERT INTO zoho_invoices (invoice_id, invoice_number, customer_name, date, due_date, total, balance, status, synced_at)
+        VALUES (${r.invoice_id}, ${r.invoice_number}, ${r.customer_name}, ${r.date}, ${r.due_date}, ${r.total || 0}, ${r.balance || 0}, ${r.status}, NOW())
+        ON CONFLICT (invoice_id) DO UPDATE SET
+          invoice_number=EXCLUDED.invoice_number, customer_name=EXCLUDED.customer_name,
+          date=EXCLUDED.date, due_date=EXCLUDED.due_date, total=EXCLUDED.total,
+          balance=EXCLUDED.balance, status=EXCLUDED.status, synced_at=NOW()
+      `
+      return
+    case "bills":
+      await sql`
+        INSERT INTO zoho_bills (bill_id, bill_number, vendor_name, date, due_date, total, balance, status, synced_at)
+        VALUES (${r.bill_id}, ${r.bill_number}, ${r.vendor_name}, ${r.date}, ${r.due_date}, ${r.total || 0}, ${r.balance || 0}, ${r.status}, NOW())
+        ON CONFLICT (bill_id) DO UPDATE SET
+          bill_number=EXCLUDED.bill_number, vendor_name=EXCLUDED.vendor_name,
+          date=EXCLUDED.date, due_date=EXCLUDED.due_date, total=EXCLUDED.total,
+          balance=EXCLUDED.balance, status=EXCLUDED.status, synced_at=NOW()
+      `
+      return
+    case "creditnotes":
+      await sql`
+        INSERT INTO zoho_creditnotes (creditnote_id, customer_name, date, total, status, synced_at)
+        VALUES (${r.creditnote_id}, ${r.customer_name}, ${r.date}, ${r.total || 0}, ${r.status}, NOW())
+        ON CONFLICT (creditnote_id) DO UPDATE SET
+          customer_name=EXCLUDED.customer_name, date=EXCLUDED.date,
+          total=EXCLUDED.total, status=EXCLUDED.status, synced_at=NOW()
+      `
+      return
+    case "vendorcredits":
+      await sql`
+        INSERT INTO zoho_vendorcredits (vendor_credit_id, vendor_name, date, total, status, synced_at)
+        VALUES (${r.vendor_credit_id}, ${r.vendor_name}, ${r.date}, ${r.total || 0}, ${r.status}, NOW())
+        ON CONFLICT (vendor_credit_id) DO UPDATE SET
+          vendor_name=EXCLUDED.vendor_name, date=EXCLUDED.date,
+          total=EXCLUDED.total, status=EXCLUDED.status, synced_at=NOW()
+      `
+      return
+    case "customerpayments":
+      await sql`
+        INSERT INTO zoho_customerpayments (payment_id, customer_name, date, amount, tax_amount_withheld, synced_at)
+        VALUES (${r.payment_id}, ${r.customer_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, NOW())
+        ON CONFLICT (payment_id) DO UPDATE SET
+          customer_name=EXCLUDED.customer_name, date=EXCLUDED.date,
+          amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld, synced_at=NOW()
+      `
+      return
+    case "vendorpayments":
+      await sql`
+        INSERT INTO zoho_vendorpayments (payment_id, vendor_name, date, amount, tax_amount_withheld, synced_at)
+        VALUES (${r.payment_id}, ${r.vendor_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, NOW())
+        ON CONFLICT (payment_id) DO UPDATE SET
+          vendor_name=EXCLUDED.vendor_name, date=EXCLUDED.date,
+          amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld, synced_at=NOW()
+      `
+      return
+    case "journals":
+      await sql`
+        INSERT INTO zoho_journals (journal_id, journal_date, reference_number, total, line_items, synced_at)
+        VALUES (${r.journal_id}, ${r.journal_date}, ${r.reference_number || ""}, ${r.total || 0}, ${JSON.stringify(r.line_items || [])}::jsonb, NOW())
+        ON CONFLICT (journal_id) DO UPDATE SET
+          journal_date=EXCLUDED.journal_date, reference_number=EXCLUDED.reference_number,
+          total=EXCLUDED.total, line_items=EXCLUDED.line_items, synced_at=NOW()
+      `
+      return
+    case "expenses":
+      await sql`
+        INSERT INTO zoho_expenses (expense_id, account_name, vendor_name, date, total, synced_at)
+        VALUES (${r.expense_id}, ${r.account_name}, ${r.vendor_name || ""}, ${r.date}, ${r.total || 0}, NOW())
+        ON CONFLICT (expense_id) DO UPDATE SET
+          account_name=EXCLUDED.account_name, vendor_name=EXCLUDED.vendor_name,
+          date=EXCLUDED.date, total=EXCLUDED.total, synced_at=NOW()
+      `
+      return
+    case "bankaccounts":
+      await sql`
+        INSERT INTO zoho_bankaccounts (account_id, account_name, balance, synced_at)
+        VALUES (${r.account_id}, ${r.account_name}, ${r.balance || 0}, NOW())
+        ON CONFLICT (account_id) DO UPDATE SET
+          account_name=EXCLUDED.account_name, balance=EXCLUDED.balance, synced_at=NOW()
+      `
+      return
+  }
+}
+
+const TABLE_FOR_MODULE: Record<string, string> = {
+  invoices: "zoho_invoices", bills: "zoho_bills", creditnotes: "zoho_creditnotes",
+  vendorcredits: "zoho_vendorcredits", customerpayments: "zoho_customerpayments",
+  vendorpayments: "zoho_vendorpayments", journals: "zoho_journals",
+  expenses: "zoho_expenses", bankaccounts: "zoho_bankaccounts",
+}
+
+// Resumable batch sync — fetches only a handful of Zoho pages per call
+// (default 4 pages = up to 800 rows) instead of the whole module at once.
+// A cursor (zoho_sync_cursor) tracks which page to continue from, so large
+// modules like invoices — which were timing out mid-fetch before writing
+// anything at all — now make guaranteed forward progress on every call,
+// even if it takes several calls to finish. The UI's "Sync Zoho Now"
+// button calls this repeatedly per module until `done` comes back true.
+export async function syncModuleBatch(module: ZohoModule, pagesPerCall = 4): Promise<{ module: string; fetchedThisCall: number; totalRows: number; done: boolean; nextPage: number }> {
   await ensureTables()
   const sql = getNeon()
+  const config = ZOHO_MODULE_CONFIG[module]
+  if (!config) throw new Error(`Unknown module "${module}"`)
 
   try {
-    let count = 0
+    const cursorRows = await sql`SELECT next_page FROM zoho_sync_cursor WHERE module = ${module}`
+    let page = (cursorRows as unknown as { next_page: number }[])[0]?.next_page ?? 1
 
-    if (module === "invoices") {
-      const rows = await getInvoices()
-      for (let i = 0; i < rows.length; i += BATCH) {
-        for (const r of rows.slice(i, i + BATCH)) {
-          await sql`
-            INSERT INTO zoho_invoices (invoice_id, invoice_number, customer_name, date, due_date, total, balance, status, synced_at)
-            VALUES (${r.invoice_id}, ${r.invoice_number}, ${r.customer_name}, ${r.date}, ${r.due_date}, ${r.total || 0}, ${r.balance || 0}, ${r.status}, NOW())
-            ON CONFLICT (invoice_id) DO UPDATE SET
-              invoice_number=EXCLUDED.invoice_number, customer_name=EXCLUDED.customer_name,
-              date=EXCLUDED.date, due_date=EXCLUDED.due_date, total=EXCLUDED.total,
-              balance=EXCLUDED.balance, status=EXCLUDED.status, synced_at=NOW()
-          `
-        }
-      }
-      count = rows.length
+    let fetchedThisCall = 0
+    let done = false
+
+    for (let i = 0; i < pagesPerCall; i++) {
+      const { rows, hasMore } = await zohoFetchOnePage(config.path, config.listKey, page)
+      for (const r of rows) await upsertRow(module, r)
+      fetchedThisCall += rows.length
+      if (!hasMore) { done = true; break }
+      page++
+      await new Promise(res => setTimeout(res, 250)) // stay clear of Zoho's rate limit
     }
 
-    else if (module === "bills") {
-      const rows = await getBills()
-      for (let i = 0; i < rows.length; i += BATCH) {
-        for (const r of rows.slice(i, i + BATCH)) {
-          await sql`
-            INSERT INTO zoho_bills (bill_id, bill_number, vendor_name, date, due_date, total, balance, status, synced_at)
-            VALUES (${r.bill_id}, ${r.bill_number}, ${r.vendor_name}, ${r.date}, ${r.due_date}, ${r.total || 0}, ${r.balance || 0}, ${r.status}, NOW())
-            ON CONFLICT (bill_id) DO UPDATE SET
-              bill_number=EXCLUDED.bill_number, vendor_name=EXCLUDED.vendor_name,
-              date=EXCLUDED.date, due_date=EXCLUDED.due_date, total=EXCLUDED.total,
-              balance=EXCLUDED.balance, status=EXCLUDED.status, synced_at=NOW()
-          `
-        }
-      }
-      count = rows.length
-    }
+    const nextPage = done ? 1 : page + 1
+    await sql`
+      INSERT INTO zoho_sync_cursor (module, next_page, done)
+      VALUES (${module}, ${nextPage}, ${done})
+      ON CONFLICT (module) DO UPDATE SET next_page = EXCLUDED.next_page, done = EXCLUDED.done
+    `
 
-    else if (module === "creditnotes") {
-      const rows = await getCreditNotes()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_creditnotes (creditnote_id, customer_name, date, total, status, synced_at)
-          VALUES (${r.creditnote_id}, ${r.customer_name}, ${r.date}, ${r.total || 0}, ${r.status}, NOW())
-          ON CONFLICT (creditnote_id) DO UPDATE SET
-            customer_name=EXCLUDED.customer_name, date=EXCLUDED.date,
-            total=EXCLUDED.total, status=EXCLUDED.status, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
-
-    else if (module === "vendorcredits") {
-      const rows = await getVendorCredits()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_vendorcredits (vendor_credit_id, vendor_name, date, total, status, synced_at)
-          VALUES (${r.vendor_credit_id}, ${r.vendor_name}, ${r.date}, ${r.total || 0}, ${r.status}, NOW())
-          ON CONFLICT (vendor_credit_id) DO UPDATE SET
-            vendor_name=EXCLUDED.vendor_name, date=EXCLUDED.date,
-            total=EXCLUDED.total, status=EXCLUDED.status, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
-
-    else if (module === "customerpayments") {
-      const rows = await getCustomerPayments()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_customerpayments (payment_id, customer_name, date, amount, tax_amount_withheld, synced_at)
-          VALUES (${r.payment_id}, ${r.customer_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, NOW())
-          ON CONFLICT (payment_id) DO UPDATE SET
-            customer_name=EXCLUDED.customer_name, date=EXCLUDED.date,
-            amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
-
-    else if (module === "vendorpayments") {
-      const rows = await getVendorPayments()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_vendorpayments (payment_id, vendor_name, date, amount, tax_amount_withheld, synced_at)
-          VALUES (${r.payment_id}, ${r.vendor_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, NOW())
-          ON CONFLICT (payment_id) DO UPDATE SET
-            vendor_name=EXCLUDED.vendor_name, date=EXCLUDED.date,
-            amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
-
-    else if (module === "journals") {
-      const rows = await getJournals()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_journals (journal_id, journal_date, reference_number, total, line_items, synced_at)
-          VALUES (${r.journal_id}, ${r.journal_date}, ${r.reference_number || ""}, ${r.total || 0}, ${JSON.stringify(r.line_items || [])}::jsonb, NOW())
-          ON CONFLICT (journal_id) DO UPDATE SET
-            journal_date=EXCLUDED.journal_date, reference_number=EXCLUDED.reference_number,
-            total=EXCLUDED.total, line_items=EXCLUDED.line_items, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
-
-    else if (module === "expenses") {
-      const rows = await getExpenses()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_expenses (expense_id, account_name, vendor_name, date, total, synced_at)
-          VALUES (${r.expense_id}, ${r.account_name}, ${r.vendor_name || ""}, ${r.date}, ${r.total || 0}, NOW())
-          ON CONFLICT (expense_id) DO UPDATE SET
-            account_name=EXCLUDED.account_name, vendor_name=EXCLUDED.vendor_name,
-            date=EXCLUDED.date, total=EXCLUDED.total, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
-
-    else if (module === "bankaccounts") {
-      const rows = await getBankAccounts()
-      for (const r of rows) {
-        await sql`
-          INSERT INTO zoho_bankaccounts (account_id, account_name, balance, synced_at)
-          VALUES (${r.account_id}, ${r.account_name}, ${r.balance || 0}, NOW())
-          ON CONFLICT (account_id) DO UPDATE SET
-            account_name=EXCLUDED.account_name, balance=EXCLUDED.balance, synced_at=NOW()
-        `
-      }
-      count = rows.length
-    }
+    const table = TABLE_FOR_MODULE[module]
+    const sqlFn = sql as unknown as (text: string, params?: unknown[]) => Promise<any>
+    const countRows = await sqlFn(`SELECT COUNT(*)::int AS n FROM ${table}`)
+    const totalRows = ((Array.isArray(countRows) ? countRows : (countRows as any).rows) as { n: number }[])[0]?.n ?? 0
 
     await sql`
       INSERT INTO zoho_sync_status (module, row_count, synced_at, error)
-      VALUES (${module}, ${count}, NOW(), NULL)
+      VALUES (${module}, ${totalRows}, NOW(), NULL)
       ON CONFLICT (module) DO UPDATE SET row_count=EXCLUDED.row_count, synced_at=NOW(), error=NULL
     `
-    return { module, count }
+
+    return { module, fetchedThisCall, totalRows, done, nextPage }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     await sql`

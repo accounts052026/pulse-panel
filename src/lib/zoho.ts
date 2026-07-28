@@ -68,6 +68,28 @@ async function zohoFetch(path: string, extraParams: Record<string, string> = {})
   return data
 }
 
+// Module name → Zoho path/listKey, used by the resumable batch sync
+// (syncModuleBatch in zoho-store.ts) which fetches a handful of pages per
+// call instead of the whole module in one shot — large modules like
+// invoices were timing out mid-fetch before any data got written at all.
+export const ZOHO_MODULE_CONFIG: Record<string, { path: string; listKey: string }> = {
+  invoices:         { path: "/invoices",        listKey: "invoices" },
+  bills:            { path: "/bills",           listKey: "bills" },
+  creditnotes:      { path: "/creditnotes",      listKey: "creditnotes" },
+  vendorcredits:    { path: "/vendorcredits",    listKey: "vendor_credits" },
+  customerpayments: { path: "/customerpayments", listKey: "customerpayments" },
+  vendorpayments:   { path: "/vendorpayments",   listKey: "vendorpayments" },
+  journals:         { path: "/journals",         listKey: "journals" },
+  expenses:         { path: "/expenses",         listKey: "expenses" },
+  bankaccounts:     { path: "/bankaccounts",      listKey: "bankaccounts" },
+}
+
+// Fetch exactly one page (used for resumable batch syncing).
+export async function zohoFetchOnePage(path: string, listKey: string, page: number): Promise<{ rows: any[]; hasMore: boolean }> {
+  const data = await zohoFetch(path, { page: String(page), per_page: "200" })
+  return { rows: data[listKey] ?? [], hasMore: !!data.page_context?.has_more_page }
+}
+
 // Fetch every page until Zoho reports no more — each module now syncs
 // independently and quickly (see /api/zoho/sync?module=X), so there's no
 // need for the old 10-page/2000-row safety cap, which was silently dropping
