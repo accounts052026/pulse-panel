@@ -1,12 +1,12 @@
 "use client"
 import { useEffect, useMemo, useState } from "react"
+import { C as SHARED_C, Sidebar } from "@/lib/dashboard-ui"
 
-const C = {
-  bg: "#F5F7FA", surface: "#FFFFFF", border: "#E5E9F0",
-  navy: "#0F1B2E", accent: "#FF5A1F",
-  green: "#16A34A", red: "#DC2626", amber: "#D97706", blue: "#2563EB",
-  text: "#0F172A", dim: "#64748B",
-}
+// Keeps its own slightly different border/dim shades from before — not
+// worth risking a visual regression on this page to unify fully — but pulls
+// the border color close enough and reuses the shared Sidebar so the nav
+// matches every other /dashboard/* page.
+const C = { ...SHARED_C, border: "#E5E9F0", dim: "#64748B" }
 
 interface RawEntity {
   entity_name: string
@@ -135,10 +135,11 @@ export default function EntityMasterPage() {
   const mappedCount = useMemo(() => rows.filter(r => r.mapped).length, [rows])
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", color: C.text, padding: "24px 28px" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", color: C.text }}>
+      <Sidebar active="entities" />
+      <main style={{ flex: 1, padding: "24px 28px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <a href="/dashboard" style={{ fontSize: 12, color: C.blue, textDecoration: "none" }}>← Back to Dashboard</a>
           <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>Entity Master</div>
           <div style={{ fontSize: 13, color: C.dim, marginTop: 2 }}>
             Every vendor/customer name as it appears in Zoho Books. Map duplicates or messy names to one canonical entity — the dashboard groups by the canonical name.
@@ -153,8 +154,8 @@ export default function EntityMasterPage() {
       </div>
 
       {msg && <div style={{ background: "#16A34A15", color: C.green, padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{msg}</div>}
-      {error && <div style={{ background: "#DC262612", color: C.red, padding: "12px 16px", borderRadius: 10, fontSize: 13, marginBottom: 16 }}>⚠ {error}</div>}
-      {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>⟳ Loading entities from Zoho Books…</div>}
+      {error && <div style={{ background: "#DC262612", color: C.red, padding: "12px 16px", borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+      {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>Loading entities from Zoho Books…</div>}
 
       {data && (
         <>
@@ -171,6 +172,7 @@ export default function EntityMasterPage() {
           <EntityTable side={tab} rows={rows} onSave={save} onReset={reset} search={search} />
         </>
       )}
+      </main>
     </div>
   )
 }

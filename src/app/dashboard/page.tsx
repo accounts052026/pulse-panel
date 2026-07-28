@@ -5,17 +5,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   BarChart, Bar, Legend,
 } from "recharts"
+import { C, fmt, fmtFull, pct, Icon, Sidebar, runZohoSync } from "@/lib/dashboard-ui"
 
-// ── Design tokens ────────────────────────────────────────────────
-const C = {
-  bg: "#F5F7FA", surface: "#FFFFFF", border: "#E9ECF2",
-  navy: "#0F1B2E", accent: "#FF5A1F",
-  green: "#16A34A", greenDim: "#16A34A15",
-  red: "#DC2626", redDim: "#FDEDEC",
-  amber: "#D97706", amberDim: "#FDF3E7",
-  blue: "#2563EB", blueDim: "#EAF1FE",
-  text: "#0F172A", dim: "#8A94A6",
-}
 const DONUT_COLORS = ["#22B14C", "#F5C400", "#F5A623", "#F97316", "#DC2626"]
 const AVATAR_COLORS = ["#FFC107", "#FF7A00", "#8B5CF6", "#22C55E", "#2563EB", "#EC4899", "#14B8A6", "#F97316"]
 
@@ -37,19 +28,6 @@ interface DashboardData {
   summary: { avgPaymentDays: number; avgCollectionDays: number; openInvoices: number; overdueCount: number }
   asOf: string
 }
-
-function fmt(v: number): string {
-  if (isNaN(v) || !isFinite(v)) return "—"
-  const abs = Math.abs(v)
-  const sign = v < 0 ? "-" : ""
-  if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(2)} Cr`
-  if (abs >= 100000)   return `${sign}₹${(abs / 100000).toFixed(2)} L`
-  return `${sign}₹${abs.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
-}
-function fmtFull(v: number): string {
-  return `₹${Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
-}
-function pct(v: number) { return `${v.toFixed(1)}%` }
 
 function avatarColor(name: string) {
   let hash = 0
@@ -81,31 +59,19 @@ function OverduePill({ value }: { value: number }) {
   )
 }
 
-const NAV = [
-  { key: "overview",    label: "Overview",         icon: "🏠" },
-  { key: "payables",    label: "Payables",         icon: "📑" },
-  { key: "receivables", label: "Receivables",      icon: "💳" },
-  { key: "expenses",    label: "Expenses",         icon: "🧾" },
-  { key: "platforms",   label: "Platforms",        icon: "🏬" },
-  { key: "reports",     label: "Reports",          icon: "📊" },
-  { key: "ageing",      label: "Ageing Analysis",  icon: "📈" },
-  { key: "cashflow",    label: "Cash Flow",        icon: "💵" },
-  { key: "alerts",      label: "Alerts",           icon: "🔔" },
-]
-
-function KpiCard({ icon, iconBg, label, value, sub, subValue, subColor, link }:
-  { icon: string; iconBg: string; label: string; value: string; sub: string; subValue?: string; subColor?: string; link: string }) {
+function KpiCard({ icon, iconBg, iconColor, label, value, sub, subValue, subColor, link }:
+  { icon: string; iconBg: string; iconColor: string; label: string; value: string; sub: string; subValue?: string; subColor?: string; link: string }) {
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px", flex: 1, minWidth: 230, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 12, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{icon}</div>
+        <div style={{ width: 38, height: 38, borderRadius: 12, background: iconBg, color: iconColor, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name={icon} size={18} /></div>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: C.dim, textTransform: "uppercase" as const }}>{label}</div>
       </div>
       <div style={{ fontSize: 25, fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>{value}</div>
       <div style={{ fontSize: 12, color: C.dim, marginTop: 6 }}>
         {sub}{subValue && <span style={{ color: subColor || C.dim, fontWeight: 700 }}> {subValue}</span>}
       </div>
-      <a href={link === "payables" || link === "receivables" ? "/dashboard/entities" : `#${link}`} style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 10, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+      <a href={link === "cashflow" ? "/dashboard/cashflow" : `#${link}`} style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginTop: 10, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
         {link === "cashflow" ? "View cash flow" : `View ${link}`} <span>→</span>
       </a>
     </div>
@@ -289,19 +255,19 @@ function ExpenseTrendChart({ trend }: { trend: DashboardData["trend"] }) {
 
 function SummaryCard({ summary }: { summary: DashboardData["summary"] }) {
   const rows = [
-    { icon: "⏱️", label: "Average Payment Days (Payables)", value: `${summary.avgPaymentDays} Days`, color: C.red },
-    { icon: "✅", label: "Average Collection Days (Receivables)", value: `${summary.avgCollectionDays} Days`, color: C.green },
-    { icon: "📄", label: "Total Open Invoices", value: String(summary.openInvoices), color: C.text },
-    { icon: "⚠️", label: "Invoices Overdue", value: String(summary.overdueCount), color: C.amber },
+    { icon: "clock",   label: "Average Payment Days (Payables)", value: `${summary.avgPaymentDays} Days`, color: C.red },
+    { icon: "check",   label: "Average Collection Days (Receivables)", value: `${summary.avgCollectionDays} Days`, color: C.green },
+    { icon: "doc",     label: "Total Open Invoices", value: String(summary.openInvoices), color: C.text },
+    { icon: "warning", label: "Invoices Overdue", value: String(summary.overdueCount), color: C.amber },
   ]
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 1, minWidth: 280, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 1, minWidth: 280, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }} id="cashflow">
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Summary</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {rows.map(r => (
           <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.dim }}>
-              <span>{r.icon}</span>{r.label}
+              <Icon name={r.icon} size={14} />{r.label}
             </div>
             <span style={{ fontWeight: 700, fontSize: 13, color: r.color }}>{r.value}</span>
           </div>
@@ -329,40 +295,10 @@ export default function ZohoDashboard() {
 
   useEffect(() => { load() }, [])
 
-  const MODULES = ["invoices", "bills", "creditnotes", "vendorcredits", "customerpayments", "vendorpayments", "journals", "expenses", "bankaccounts"]
-
-  // Each call to /api/zoho/sync?module=X pulls just a few pages (a "batch")
-  // and reports back done:true once that module has no more pages left.
-  // Large modules (invoices especially) need several batches to finish —
-  // looping here instead of a single call means we always make forward
-  // progress instead of one long request timing out with nothing saved.
   const syncNow = async () => {
     setSyncing(true); setSyncMsg("")
-    let failed = 0
-    for (let i = 0; i < MODULES.length; i++) {
-      const m = MODULES[i]
-      let done = false
-      let batch = 0
-      let rowsSoFar = 0
-      while (!done) {
-        batch++
-        setSyncMsg(`Syncing ${m}… module ${i + 1}/${MODULES.length}, batch ${batch} (${rowsSoFar} rows so far)`)
-        try {
-          const res = await fetch(`/api/zoho/sync?module=${m}`, { method: "POST" })
-          const text = await res.text()
-          let d: any
-          try { d = JSON.parse(text) } catch { d = { error: `Non-JSON response (status ${res.status}): ${text.slice(0, 120)}` } }
-          if (d.error) { failed++; break }
-          done = !!d.done
-          rowsSoFar = d.totalRows ?? rowsSoFar
-          if (batch > 50) break // safety valve — shouldn't normally trigger
-        } catch {
-          failed++
-          break
-        }
-      }
-    }
-    setSyncMsg(failed ? `⚠ Synced with ${failed} module(s) failing — see below` : "✓ Synced from Zoho Books")
+    const { failed } = await runZohoSync(msg => setSyncMsg(msg))
+    setSyncMsg(failed ? `Synced with ${failed} module(s) failing — see below` : "Synced from Zoho Books")
     load()
     setSyncing(false)
     setTimeout(() => setSyncMsg(""), 6000)
@@ -371,29 +307,8 @@ export default function ZohoDashboard() {
   const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", color: C.text }}>
-      {/* Sidebar */}
-      <aside style={{ width: 224, background: C.navy, color: "#fff", padding: "20px 14px", display: "flex", flexDirection: "column", gap: 3 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 26, padding: "0 6px" }}>
-          <div style={{ width: 30, height: 30, background: C.accent, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14 }}>C</div>
-          <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.3 }}>CURRYIT</div>
-        </div>
-        {NAV.map(n => (
-          <div key={n.key} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", borderRadius: 9, fontSize: 13, fontWeight: n.key === "overview" ? 700 : 500, background: n.key === "overview" ? "rgba(255,255,255,0.10)" : "transparent", color: n.key === "overview" ? "#fff" : "rgba(255,255,255,0.62)", cursor: "pointer" }}>
-            <span style={{ fontSize: 15 }}>{n.icon}</span>{n.label}
-          </div>
-        ))}
-        <a href="/dashboard/entities" style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", borderRadius: 9, fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.62)", textDecoration: "none" }}>
-          <span style={{ fontSize: 15 }}>🗂️</span>Entity Master
-        </a>
-        <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", borderRadius: 9, fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.62)" }}>
-          <span style={{ fontSize: 15 }}>⚙️</span>Settings
-        </div>
-        <div style={{ marginTop: "auto", background: "rgba(255,255,255,0.07)", borderRadius: 12, padding: 13, fontSize: 11, color: "rgba(255,255,255,0.6)", display: "flex", gap: 9, alignItems: "center" }}>
-          <span style={{ fontSize: 18 }}>🗄️</span>
-          <div>Data Source<br /><b style={{ color: "#fff" }}>Zoho Books</b></div>
-        </div>
-      </aside>
+    <div id="top" style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", color: C.text }}>
+      <Sidebar active="overview" />
 
       {/* Main */}
       <main style={{ flex: 1, padding: "24px 28px", maxWidth: 1440 }}>
@@ -405,26 +320,23 @@ export default function ZohoDashboard() {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <div style={{ display: "flex", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.border}`, background: C.surface, borderRadius: 9, padding: "8px 12px", fontSize: 12, color: C.text, fontWeight: 500 }}>
-                <span>📅</span>As on {today}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.border}`, background: C.surface, borderRadius: 9, padding: "8px 12px", fontSize: 12, color: C.text, fontWeight: 600, cursor: "pointer" }}>
-                <span>⚗️</span>Filters
+                <Icon name="calendar" size={13} />As on {today}
               </div>
               <button onClick={syncNow} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: C.accent, color: "#fff", borderRadius: 9, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: syncing ? "not-allowed" : "pointer", opacity: syncing ? 0.6 : 1 }}>
-                <span>{syncing ? "⟳" : "↻"}</span>{syncing ? "Syncing…" : "Sync Zoho"}
+                <Icon name="refresh" size={13} />{syncing ? "Syncing…" : "Sync Zoho"}
               </button>
             </div>
             <div style={{ fontSize: 11, color: C.dim, textAlign: "right" as const }}>
-              {syncMsg ? <span style={{ color: syncMsg.startsWith("⚠") ? C.red : C.green, fontWeight: 600 }}>{syncMsg}</span> :
+              {syncMsg ? <span style={{ color: syncMsg.startsWith("Synced with") ? C.red : C.green, fontWeight: 600 }}>{syncMsg}</span> :
                 data && <>Data as of: {new Date(data.asOf).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} · auto-syncs daily</>}
             </div>
           </div>
         </div>
 
-        {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>⟳ Loading live data from Zoho Books…</div>}
+        {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>Loading live data from Zoho Books…</div>}
         {error && (
           <div style={{ background: C.redDim, border: `1px solid ${C.red}33`, borderRadius: 10, padding: "12px 16px", color: C.red, fontSize: 13, marginBottom: 16 }}>
-            ⚠ {error}
+            {error}
           </div>
         )}
 
@@ -432,14 +344,14 @@ export default function ZohoDashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* KPI row */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <KpiCard icon="💰" iconBg={C.greenDim} label="Total Payables" value={fmt(data.kpis.totalPayables)}
+              <KpiCard icon="payables" iconBg={C.greenDim} iconColor={C.green} label="Total Payables" value={fmt(data.kpis.totalPayables)}
                 sub="Overdue:" subValue={`${fmtFull(data.kpis.payablesOverdue)} (${pct(data.kpis.payablesOverduePct)})`} subColor={C.red} link="payables" />
-              <KpiCard icon="👛" iconBg={C.greenDim} label="Total Receivables" value={fmt(data.kpis.totalReceivables)}
+              <KpiCard icon="wallet" iconBg={C.greenDim} iconColor={C.green} label="Total Receivables" value={fmt(data.kpis.totalReceivables)}
                 sub="Overdue:" subValue={`${fmtFull(data.kpis.receivablesOverdue)} (${pct(data.kpis.receivablesOverduePct)})`} subColor={C.red} link="receivables" />
-              <KpiCard icon="📄" iconBg={C.blueDim} label="Total Expenses (MTD)" value={fmt(data.kpis.expensesThisMonth)}
+              <KpiCard icon="doc" iconBg={C.blueDim} iconColor={C.blue} label="Total Expenses (MTD)" value={fmt(data.kpis.expensesThisMonth)}
                 sub="vs Last Month:" subValue={`${data.kpis.expensesMomPct >= 0 ? "↑" : "↓"} ${pct(Math.abs(data.kpis.expensesMomPct))}`}
                 subColor={data.kpis.expensesMomPct >= 0 ? C.red : C.green} link="expenses" />
-              <KpiCard icon="🏦" iconBg={C.amberDim} label="Cash &amp; Bank Balance" value={fmt(data.kpis.cashAndBankBalance)}
+              <KpiCard icon="bank" iconBg={C.amberDim} iconColor={C.amber} label="Cash &amp; Bank Balance" value={fmt(data.kpis.cashAndBankBalance)}
                 sub="As on today" link="cashflow" />
             </div>
 
