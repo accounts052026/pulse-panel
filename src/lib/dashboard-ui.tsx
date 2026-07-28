@@ -1,4 +1,5 @@
 "use client"
+import { useState } from "react"
 // ── Shared dashboard chrome (tokens, icons, sidebar) ────────────
 // Used by every /dashboard/* page so the sidebar nav, colors, and
 // number formatting stay consistent instead of being copy-pasted
@@ -67,9 +68,126 @@ export const NAV = [
   { key: "reports",     label: "Reports",          icon: "reports",    href: "/dashboard/reports" },
 ]
 
+// ── Date range ──────────────────────────────────────────────────
+// Indian financial year: 1 April → 31 March.
+export function iso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+export function financialYearRange(ref = new Date()): { from: string; to: string } {
+  // Months are 0-indexed, so March is 2 — anything from April (3) onward
+  // belongs to the FY starting this calendar year.
+  const startYear = ref.getMonth() >= 3 ? ref.getFullYear() : ref.getFullYear() - 1
+  return { from: `${startYear}-04-01`, to: `${startYear + 1}-03-31` }
+}
+
+export interface DateRange { from: string; to: string; label: string }
+
+export function defaultRange(): DateRange {
+  const fy = financialYearRange()
+  const startYear = Number(fy.from.slice(0, 4))
+  return { ...fy, label: `FY ${startYear}-${String(startYear + 1).slice(2)}` }
+}
+
+export function rangePresets(ref = new Date()): DateRange[] {
+  const y = ref.getFullYear()
+  const m = ref.getMonth()
+  const fy = financialYearRange(ref)
+  const fyStartYear = Number(fy.from.slice(0, 4))
+  const prevFyStart = fyStartYear - 1
+
+  const monthStart = new Date(y, m, 1)
+  const lastMonthStart = new Date(y, m - 1, 1)
+  const lastMonthEnd = new Date(y, m, 0)
+  const quarterStart = new Date(y, Math.floor(m / 3) * 3, 1)
+
+  return [
+    { ...fy, label: `FY ${fyStartYear}-${String(fyStartYear + 1).slice(2)}` },
+    { from: `${prevFyStart}-04-01`, to: `${prevFyStart + 1}-03-31`, label: `FY ${prevFyStart}-${String(prevFyStart + 1).slice(2)}` },
+    { from: iso(quarterStart), to: iso(ref), label: "This Quarter" },
+    { from: iso(monthStart), to: iso(ref), label: "This Month" },
+    { from: iso(lastMonthStart), to: iso(lastMonthEnd), label: "Last Month" },
+    { from: "1900-01-01", to: "2999-12-31", label: "All Time" },
+  ]
+}
+
+export function DateRangeFilter({ value, onChange }: { value: DateRange; onChange: (r: DateRange) => void }) {
+  const [open, setOpen] = useState(false)
+  const [customFrom, setCustomFrom] = useState(value.from)
+  const [customTo, setCustomTo] = useState(value.to)
+  const presets = rangePresets()
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 7, border: `1px solid ${C.border}`,
+          background: C.surface, borderRadius: 9, padding: "8px 12px", fontSize: 12,
+          color: C.text, fontWeight: 600, cursor: "pointer",
+        }}
+      >
+        <Icon name="calendar" size={13} />
+        {value.label}
+        <span style={{ color: C.dim, fontSize: 10 }}>▼</span>
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
+          <div style={{
+            position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 21,
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+            boxShadow: "0 8px 24px rgba(15,23,42,0.12)", padding: 10, minWidth: 250,
+          }}>
+            {presets.map(p => (
+              <button
+                key={p.label}
+                onClick={() => { onChange(p); setOpen(false) }}
+                style={{
+                  display: "block", width: "100%", textAlign: "left" as const, border: "none",
+                  background: p.label === value.label ? "#F1F5F9" : "transparent",
+                  borderRadius: 7, padding: "8px 10px", fontSize: 12.5, cursor: "pointer",
+                  fontWeight: p.label === value.label ? 700 : 500, color: C.text,
+                }}
+              >{p.label}</button>
+            ))}
+
+            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 8, paddingTop: 10 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 8 }}>Custom</div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", fontSize: 12, flex: 1, minWidth: 0 }} />
+                <span style={{ color: C.dim, fontSize: 11 }}>to</span>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", fontSize: 12, flex: 1, minWidth: 0 }} />
+              </div>
+              <button
+                onClick={() => {
+                  if (!customFrom || !customTo) return
+                  onChange({ from: customFrom, to: customTo, label: `${customFrom} → ${customTo}` })
+                  setOpen(false)
+                }}
+                style={{ width: "100%", background: C.accent, color: "#fff", border: "none", borderRadius: 7, padding: "8px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >Apply</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function Sidebar({ active }: { active: string }) {
   return (
-    <aside style={{ width: 224, background: C.navy, color: "#fff", padding: "20px 14px", display: "flex", flexDirection: "column", gap: 3 }}>
+    {/* sticky + own scroll so the nav stays put instead of scrolling out of
+        view and leaving an empty dark column beside the content. */}
+    <aside style={{
+      width: 224, background: C.navy, color: "#fff", padding: "20px 14px",
+      display: "flex", flexDirection: "column", gap: 3,
+      position: "sticky", top: 0, height: "100vh",
+      alignSelf: "flex-start", flexShrink: 0, overflowY: "auto" as const,
+    }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 26, padding: "0 6px" }}>
         <div style={{ width: 30, height: 30, background: C.accent, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14 }}>C</div>
         <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.3 }}>CURRYIT</div>

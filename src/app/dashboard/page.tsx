@@ -5,7 +5,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   BarChart, Bar, Legend,
 } from "recharts"
-import { C, fmt, fmtFull, pct, Icon, Sidebar, runZohoSync } from "@/lib/dashboard-ui"
+import {
+  C, fmt, fmtFull, pct, Icon, Sidebar, runZohoSync,
+  DateRangeFilter, defaultRange, type DateRange,
+} from "@/lib/dashboard-ui"
 
 const DONUT_COLORS = ["#22B14C", "#F5C400", "#F5A623", "#F97316", "#DC2626"]
 const AVATAR_COLORS = ["#FFC107", "#FF7A00", "#8B5CF6", "#22C55E", "#2563EB", "#EC4899", "#14B8A6", "#F97316"]
@@ -304,17 +307,18 @@ export default function ZohoDashboard() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState("")
+  const [range, setRange] = useState<DateRange>(defaultRange)
 
-  const load = () => {
+  const load = (r: DateRange = range) => {
     setLoading(true)
-    fetch("/api/zoho/dashboard", { cache: "no-store" })
-      .then(r => r.json())
-      .then(d => { if (d.error) setError(d.error); else setData(d) })
+    fetch(`/api/zoho/dashboard?from=${r.from}&to=${r.to}`, { cache: "no-store" })
+      .then(res => res.json())
+      .then(d => { if (d.error) setError(d.error); else { setData(d); setError("") } })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(range) }, [range])
 
   const syncNow = async () => {
     setSyncing(true); setSyncMsg("")
@@ -325,7 +329,6 @@ export default function ZohoDashboard() {
     setTimeout(() => setSyncMsg(""), 6000)
   }
 
-  const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 
   return (
     <div id="top" style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", color: C.text }}>
@@ -340,9 +343,7 @@ export default function ZohoDashboard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <div style={{ display: "flex", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.border}`, background: C.surface, borderRadius: 9, padding: "8px 12px", fontSize: 12, color: C.text, fontWeight: 500 }}>
-                <Icon name="calendar" size={13} />As on {today}
-              </div>
+              <DateRangeFilter value={range} onChange={setRange} />
               <button onClick={syncNow} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: C.accent, color: "#fff", borderRadius: 9, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: syncing ? "not-allowed" : "pointer", opacity: syncing ? 0.6 : 1 }}>
                 <Icon name="refresh" size={13} />{syncing ? "Syncing…" : "Sync Zoho"}
               </button>
@@ -369,8 +370,8 @@ export default function ZohoDashboard() {
                 sub="Overdue:" subValue={`${fmtFull(data.kpis.payablesOverdue)} (${pct(data.kpis.payablesOverduePct)})`} subColor={C.red} link="payables" />
               <KpiCard icon="wallet" iconBg={C.greenDim} iconColor={C.green} label="Total Receivables" value={fmt(data.kpis.totalReceivables)}
                 sub="Overdue:" subValue={`${fmtFull(data.kpis.receivablesOverdue)} (${pct(data.kpis.receivablesOverduePct)})`} subColor={C.red} link="receivables" />
-              <KpiCard icon="doc" iconBg={C.blueDim} iconColor={C.blue} label="Total Expenses (MTD)" value={fmt(data.kpis.expensesThisMonth)}
-                sub="vs Last Month:" subValue={`${data.kpis.expensesMomPct >= 0 ? "↑" : "↓"} ${pct(Math.abs(data.kpis.expensesMomPct))}`}
+              <KpiCard icon="doc" iconBg={C.blueDim} iconColor={C.blue} label={`Total Expenses (${range.label})`} value={fmt(data.kpis.expensesThisMonth)}
+                sub="vs prior period:" subValue={`${data.kpis.expensesMomPct >= 0 ? "↑" : "↓"} ${pct(Math.abs(data.kpis.expensesMomPct))}`}
                 subColor={data.kpis.expensesMomPct >= 0 ? C.red : C.green} link="expenses" />
               <KpiCard icon="bank" iconBg={C.amberDim} iconColor={C.amber} label="Cash &amp; Bank Balance" value={fmt(data.kpis.cashAndBankBalance)}
                 sub="As on today" link="cashflow" />
@@ -383,7 +384,7 @@ export default function ZohoDashboard() {
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
               <DonutCard title="Payables by Ageing" data={data.payablesAgeing} total={data.kpis.totalPayables} linkId="payables" href="/dashboard/ageing" />
               <DonutCard title="Receivables by Ageing" data={data.receivablesAgeing} total={data.kpis.totalReceivables} linkId="receivables" href="/dashboard/ageing" />
-              <DonutCard title="Expenses by Category (MTD)" data={data.expenseByCategory} total={data.kpis.expensesThisMonth} linkId="expenses" href="/dashboard/reports" />
+              <DonutCard title={`Expenses by Category (${range.label})`} data={data.expenseByCategory} total={data.kpis.expensesThisMonth} linkId="expenses" href="/dashboard/reports" />
             </div>
 
             {/* Top vendor/customer tables + overdue */}

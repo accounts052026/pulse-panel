@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
@@ -50,11 +50,41 @@ function topByEntity<T extends { balance: number }>(items: T[], nameKey: keyof T
 
 function monthKey(d: string) { return d?.slice(0, 7) ?? "Unknown" }
 
-export async function GET() {
+// Indian financial year: 1 April → 31 March. Used when no range is supplied.
+function defaultFinancialYear(): { from: string; to: string } {
+  const now = new Date()
+  const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+  return { from: `${startYear}-04-01`, to: `${startYear + 1}-03-31` }
+}
+
+// Dates are stored as ISO "YYYY-MM-DD" text, so string comparison is a
+// correct date comparison.
+function inRange(date: string | undefined, from: string, to: string) {
+  if (!date) return false
+  const d = date.slice(0, 10)
+  return d >= from && d <= to
+}
+
+// Zoho's own "Total Unpaid" figures exclude drafts and voided documents;
+// including them here made the dashboard read higher than Zoho Books.
+const EXCLUDED_STATUSES = new Set(["draft", "void", "voided"])
+function isLive(status: string | undefined) {
+  return !EXCLUDED_STATUSES.has((status ?? "").toLowerCase())
+}
+
+export async function GET(req: NextRequest) {
   try {
-    const [invoices, bills, expenses, bankAccounts, mapping] = await Promise.all([
+    const fy = defaultFinancialYear()
+    const from = req.nextUrl.searchParams.get("from") || fy.from
+    const to   = req.nextUrl.searchParams.get("to")   || fy.to
+
+    const [allInvoices, allBills, allExpenses, bankAccounts, mapping] = await Promise.all([
       getInvoices(), getBills(), getExpenses(), getBankAccounts(), getEntityMapping(),
     ])
+
+    const invoices = allInvoices.filter(i => isLive(i.status) && inRange(i.date, from, to))
+    const bills    = allBills.filter(b => isLive(b.status) && inRange(b.date, from, to))
+    const expenses = allExpenses.filter(e => inRange(e.date, from, to))
 
     // ── KPI totals ──────────────────────────────────────────────
     const totalPayables    = bills.reduce((s, b) => s + (b.balance || 0), 0)
@@ -63,12 +93,20 @@ export async function GET() {
     const receivablesOverdue = invoices.filter(i => isOverdue(i.due_date, i.balance)).reduce((s, i) => s + i.balance, 0)
 
     const now = new Date()
-    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const lastMonthKey  = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`
 
-    const expensesThisMonth = expenses.filter(e => monthKey(e.date) === thisMonthKey).reduce((s, e) => s + (e.total || 0), 0)
-    const expensesLastMonth = expenses.filter(e => monthKey(e.date) === lastMonthKey).reduce((s, e) => s + (e.total || 0), 0)
+    // Expenses are summed over the selected range, and compared against the
+    // immediately preceding window of the same length so the comparison stays
+    // meaningful whichever range is chosen.
+    const expensesThisMonth = expenses.reduce((s, e) => s + (e.total || 0), 0)
+
+    const fromMs = new Date(from).getTime()
+    const toMs   = new Date(to).getTime()
+    const spanMs = Math.max(toMs - fromMs, 86_400_000)
+    const prevFrom = new Date(fromMs - spanMs).toISOString().slice(0, 10)
+    const prevTo   = new Date(fromMs - 86_400_000).toISOString().slice(0, 10)
+    const expensesLastMonth = allExpenses
+      .filter(e => inRange(e.date, prevFrom, prevTo))
+      .reduce((s, e) => s + (e.total || 0), 0)
     const expensesMomPct = expensesLastMonth ? ((expensesThisMonth - expensesLastMonth) / expensesLastMonth) * 100 : 0
 
     const cashAndBankBalance = bankAccounts.reduce((s, a) => s + (a.balance || 0), 0)
@@ -77,9 +115,9 @@ export async function GET() {
     const payablesAgeing    = ageingBuckets(bills)
     const receivablesAgeing = ageingBuckets(invoices)
 
-    // ── Expense by category (this month) ─────────────────────────
+    // ── Expense by category (selected range) ─────────────────────
     const catMap: Record<string, number> = {}
-    for (const e of expenses.filter(e => monthKey(e.date) === thisMonthKey)) {
+    for (const e of expenses) {
       const cat = e.account_name || "Other"
       catMap[cat] = (catMap[cat] || 0) + (e.total || 0)
     }
@@ -100,13 +138,13 @@ export async function GET() {
     const overdueBills = bills
       .filter(b => isOverdue(b.due_date, b.balance))
       .sort((a, b) => b.balance - a.balance)
-      .slice(0, 10)
+      .slice(0, 5)
       .map(b => ({ doc_no: b.bill_number, party: canonical(b.vendor_name, mapping), due_date: b.due_date, overdue: b.balance, side: "payable" as const }))
 
     const overdueInvoices = invoices
       .filter(i => isOverdue(i.due_date, i.balance))
       .sort((a, b) => b.balance - a.balance)
-      .slice(0, 10)
+      .slice(0, 5)
       .map(i => ({ doc_no: i.invoice_number, party: canonical(i.customer_name, mapping), due_date: i.due_date, overdue: i.balance, side: "receivable" as const }))
 
     // ── Trend — last 6 months ────────────────────────────────────
@@ -138,12 +176,16 @@ export async function GET() {
       },
       payablesAgeing, receivablesAgeing, expenseByCategory,
       payablesByVendor, receivablesByCustomer,
-      overdueTop: [...overdueBills, ...overdueInvoices].sort((a, b) => b.overdue - a.overdue).slice(0, 10),
+      // Both sides kept whole (5 each) rather than combined-then-truncated,
+      // which used to leave one tab nearly empty and the other overfull —
+      // and made this card tower over the two Top-5 tables beside it.
+      overdueTop: [...overdueBills, ...overdueInvoices],
       trend,
       summary: {
         avgPaymentDays, avgCollectionDays,
         openInvoices, overdueCount,
       },
+      range: { from, to },
       asOf: (await getLastSyncedAt()) ?? now.toISOString(),
     })
   } catch (err: unknown) {
