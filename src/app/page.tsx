@@ -43,7 +43,7 @@ interface VendorMaster {
   canonical: string      // display name
   category: string       // grouping category
   critical: Criticality  // can we stop paying?
-  note: string
+  note?: string
 }
 
 const VENDOR_MASTER: Record<string, VendorMaster> = {
@@ -203,7 +203,10 @@ const CRITICAL_COLOR: Record<Criticality, string> = {
 const CRITICAL_LABEL: Record<Criticality, string> = {
   "CRITICAL": "Must Pay", "MEDIUM": "Important", "LOW": "Optional",
   "ONE-TIME": "One-Time", "BAND": "Closed",
+}
 
+// ── Additional vendor entries (moved here from a bad merge — belong in VENDOR_MASTER) ──
+const VENDOR_MASTER_EXTRA: Record<string, VendorMaster> = {
   "SWIGGY LIMITED":                        {canonical:"Swiggy (Marketing)",              category:"MARKETING",     critical:"MEDIUM"},
   "Pooja Siddique":                        {canonical:"Pooja Siddique (Consultant)",     category:"PROFESSIONAL",  critical:"LOW"},
   "Hoookd Media":                          {canonical:"Hookd Media (Marketing)",         category:"MARKETING",     critical:"LOW"},
@@ -264,6 +267,7 @@ const CRITICAL_LABEL: Record<Criticality, string> = {
   "InterGlobe Aviation Limited":           {canonical:"IndiGo (Travel)",                 category:"ADMIN",         critical:"LOW"},
   "Cook Chef Equipments India_2":          {canonical:"Cook Chef (Machinery)",           category:"MACHINERY",     critical:"ONE-TIME"},
 }
+Object.assign(VENDOR_MASTER, VENDOR_MASTER_EXTRA)
 
 function getVendorInfo(name: string): VendorMaster {
   // Exact match first
