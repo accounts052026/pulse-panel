@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
-import {
-  getInvoices, getBills, getCreditNotes, getVendorCredits,
-  getCustomerPayments, getVendorPayments, getJournals,
+import type {
+  ZohoInvoice, ZohoBill, ZohoCreditNote, ZohoVendorCredit,
+  ZohoCustomerPayment, ZohoVendorPayment, ZohoJournal,
 } from "@/lib/zoho"
+import { getCachedModule } from "@/lib/zoho-store"
 import { getNeon } from "@/lib/neon"
+
+const getInvoices         = () => getCachedModule<ZohoInvoice>("invoices")
+const getBills            = () => getCachedModule<ZohoBill>("bills")
+const getCreditNotes      = () => getCachedModule<ZohoCreditNote>("creditnotes")
+const getVendorCredits    = () => getCachedModule<ZohoVendorCredit>("vendorcredits")
+const getCustomerPayments = () => getCachedModule<ZohoCustomerPayment>("customerpayments")
+const getVendorPayments   = () => getCachedModule<ZohoVendorPayment>("vendorpayments")
+const getJournals         = () => getCachedModule<ZohoJournal>("journals")
 
 export const dynamic = "force-dynamic"
 

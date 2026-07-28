@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server"
-import { getInvoices, getBills, getExpenses, getBankAccounts, type ZohoInvoice, type ZohoBill, type ZohoExpense } from "@/lib/zoho"
+import type { ZohoInvoice, ZohoBill, ZohoExpense, ZohoBankAccount } from "@/lib/zoho"
+import { getCachedModule, getLastSyncedAt } from "@/lib/zoho-store"
 import { getNeon } from "@/lib/neon"
+
+// Reads from the Neon-cached copy of Zoho data (populated by /api/zoho/sync,
+// on a schedule + manual "Sync now" button) instead of calling Zoho live on
+// every page load — avoids the "too many requests" rate limit.
+const getInvoices     = () => getCachedModule<ZohoInvoice>("invoices")
+const getBills        = () => getCachedModule<ZohoBill>("bills")
+const getExpenses     = () => getCachedModule<ZohoExpense>("expenses")
+const getBankAccounts = () => getCachedModule<ZohoBankAccount>("bankaccounts")
 
 export const dynamic = "force-dynamic"
 
@@ -155,7 +164,7 @@ export async function GET() {
         avgPaymentDays, avgCollectionDays,
         openInvoices, overdueCount,
       },
-      asOf: now.toISOString(),
+      asOf: (await getLastSyncedAt()) ?? now.toISOString(),
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

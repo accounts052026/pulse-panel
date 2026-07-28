@@ -315,14 +315,33 @@ export default function ZohoDashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState("")
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true)
     fetch("/api/zoho/dashboard", { cache: "no-store" })
       .then(r => r.json())
       .then(d => { if (d.error) setError(d.error); else setData(d) })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
+
+  const syncNow = async () => {
+    setSyncing(true); setSyncMsg("")
+    try {
+      const res = await fetch("/api/zoho/sync", { method: "POST" })
+      const d = await res.json()
+      if (d.error) { setSyncMsg("⚠ " + d.error) } else { setSyncMsg("✓ Synced from Zoho Books"); load() }
+    } catch (e) {
+      setSyncMsg("⚠ " + String(e))
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMsg(""), 5000)
+    }
+  }
 
   const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 
@@ -356,7 +375,7 @@ export default function ZohoDashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 22, flexWrap: "wrap", gap: 12 }}>
           <div>
             <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: -0.4 }}>Finance Dashboard</div>
-            <div style={{ fontSize: 13, color: C.dim, marginTop: 3 }}>Snapshot of Payables, Receivables &amp; Expenses — live from Zoho Books</div>
+            <div style={{ fontSize: 13, color: C.dim, marginTop: 3 }}>Snapshot of Payables, Receivables &amp; Expenses — synced from Zoho Books</div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <div style={{ display: "flex", gap: 8 }}>
@@ -366,9 +385,13 @@ export default function ZohoDashboard() {
               <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.border}`, background: C.surface, borderRadius: 9, padding: "8px 12px", fontSize: 12, color: C.text, fontWeight: 600, cursor: "pointer" }}>
                 <span>⚗️</span>Filters
               </div>
+              <button onClick={syncNow} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: C.accent, color: "#fff", borderRadius: 9, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: syncing ? "not-allowed" : "pointer", opacity: syncing ? 0.6 : 1 }}>
+                <span>{syncing ? "⟳" : "↻"}</span>{syncing ? "Syncing…" : "Sync Zoho"}
+              </button>
             </div>
-            <div style={{ fontSize: 11, color: C.dim }}>
-              {data && <>Last updated: {new Date(data.asOf).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</>}
+            <div style={{ fontSize: 11, color: C.dim, textAlign: "right" as const }}>
+              {syncMsg ? <span style={{ color: syncMsg.startsWith("⚠") ? C.red : C.green, fontWeight: 600 }}>{syncMsg}</span> :
+                data && <>Data as of: {new Date(data.asOf).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} · auto-syncs daily</>}
             </div>
           </div>
         </div>

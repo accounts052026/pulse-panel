@@ -712,8 +712,10 @@ function EntitySnapshotView({dateFrom, dateTo}:{dateFrom:string; dateTo:string})
   const [apRows, setApRows]   = useState<EntityRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState("")
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState("")
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true); setError("")
     const params = new URLSearchParams()
     if (dateFrom) params.set("from", dateFrom)
@@ -726,21 +728,52 @@ function EntitySnapshotView({dateFrom, dateTo}:{dateFrom:string; dateTo:string})
       })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
-  }, [dateFrom, dateTo])
+  }
 
-  if (loading) return <div style={{textAlign:"center" as const,padding:40,color:C.dimText}}>⟳ Loading entity data from Zoho Books…</div>
-  if (error) return <div style={{background:C.negativeDim,border:`1px solid ${C.negative}44`,borderRadius:10,padding:"12px 16px",color:C.negative,fontSize:13}}>⚠ {error}</div>
+  useEffect(load, [dateFrom, dateTo])
+
+  const syncNow = async () => {
+    setSyncing(true); setSyncMsg("")
+    try {
+      const res = await fetch("/api/zoho/sync", { method: "POST" })
+      const d = await res.json()
+      if (d.error) setSyncMsg("⚠ " + d.error)
+      else { setSyncMsg("✓ Synced from Zoho Books"); load() }
+    } catch (e) {
+      setSyncMsg("⚠ " + String(e))
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMsg(""), 5000)
+    }
+  }
 
   return (
     <div style={{display:"flex",flexDirection:"column" as const,gap:20}}>
-      <div>
-        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.positive,marginBottom:8}}>◆ Receivables — Customer Wise (Zoho Books{dateFrom||dateTo?`, ${dateFrom||"…"} → ${dateTo||"…"}`:""})</div>
-        <EntitySnapshotTable rows={arRows} side="ar"/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap" as const,gap:8}}>
+        <div style={{fontSize:11,color:C.dimText}}>
+          Data pulled from a cached copy of Zoho Books (synced daily each morning, or on demand) — not fetched live on every load, to stay within Zoho's API rate limits.
+        </div>
+        <button onClick={syncNow} disabled={syncing} style={{background:C.accent,color:"#0B0F1A",border:"none",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:syncing?"not-allowed":"pointer",opacity:syncing?0.6:1}}>
+          {syncing?"⟳ Syncing…":"↻ Sync Zoho Now"}
+        </button>
       </div>
-      <div>
-        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.negative,marginBottom:8}}>◆ Payables — Vendor Wise (Zoho Books{dateFrom||dateTo?`, ${dateFrom||"…"} → ${dateTo||"…"}`:""})</div>
-        <EntitySnapshotTable rows={apRows} side="ap"/>
-      </div>
+      {syncMsg && <div style={{fontSize:12,fontWeight:600,color:syncMsg.startsWith("⚠")?C.negative:C.positive}}>{syncMsg}</div>}
+
+      {loading && <div style={{textAlign:"center" as const,padding:40,color:C.dimText}}>⟳ Loading entity data…</div>}
+      {error && <div style={{background:C.negativeDim,border:`1px solid ${C.negative}44`,borderRadius:10,padding:"12px 16px",color:C.negative,fontSize:13}}>⚠ {error}</div>}
+
+      {!loading && !error && (
+        <>
+          <div>
+            <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.positive,marginBottom:8}}>◆ Receivables — Customer Wise{dateFrom||dateTo?` (${dateFrom||"…"} → ${dateTo||"…"})`:""}</div>
+            <EntitySnapshotTable rows={arRows} side="ar"/>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:"uppercase" as const,color:C.negative,marginBottom:8}}>◆ Payables — Vendor Wise{dateFrom||dateTo?` (${dateFrom||"…"} → ${dateTo||"…"})`:""}</div>
+            <EntitySnapshotTable rows={apRows} side="ap"/>
+          </div>
+        </>
+      )}
     </div>
   )
 }
