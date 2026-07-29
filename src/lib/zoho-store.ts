@@ -505,6 +505,136 @@ export function classifyCreditNote(accounts: string[]): CreditNoteKind {
   return "other"
 }
 
+// ── Net ageing / outstanding — THE single calculation ───────────
+//
+// Dashboard, Payables, Receivables, Ageing and Platforms must all report
+// the same outstanding figure. They previously each did their own version
+// and drifted badly (the dashboard read 1.84 Cr while the same data showed
+// 3.36 Cr on the Receivables and Ageing pages), so every view now derives
+// its numbers from this one function.
+//
+// Two rules encoded here:
+//  1. Outstanding balance is a point-in-time snapshot. It is NOT filtered
+//     by document date — an unpaid invoice from a previous financial year
+//     is still receivable today. Date filters belong on flows (expenses,
+//     trends, settlement), never on a balance.
+//  2. Advances are applied PER ENTITY, capped at that entity's own
+//     balance. Applying a pooled total across all entities would let one
+//     party's excess advance wrongly reduce another party's debt.
+export const AGEING_BUCKETS = ["0 - 30 Days", "31 - 60 Days", "61 - 90 Days", "91 - 120 Days", "> 120 Days"] as const
+export type AgeingBucketLabel = (typeof AGEING_BUCKETS)[number]
+
+function bucketForDays(days: number): AgeingBucketLabel {
+  if (days <= 30) return "0 - 30 Days"
+  if (days <= 60) return "31 - 60 Days"
+  if (days <= 90) return "61 - 90 Days"
+  if (days <= 120) return "91 - 120 Days"
+  return "> 120 Days"
+}
+
+export interface NetAgeingEntity {
+  name: string
+  buckets: Record<string, number>
+  grossBuckets: Record<string, number>
+  total: number
+  grossTotal: number
+  overdue: number
+  grossOverdue: number
+  advance: number
+  unabsorbedAdvance: number
+  count: number
+}
+
+export interface NetAgeingResult {
+  entities: NetAgeingEntity[]
+  bucketTotals: { label: string; amount: number }[]
+  total: number
+  grossTotal: number
+  overdue: number
+  grossOverdue: number
+  advance: number
+}
+
+export function computeNetAgeing(
+  items: { balance: number; due_date: string; status?: string }[],
+  nameKey: string,
+  mapping: Record<string, string>,
+  unapplied: Record<string, number>,
+): NetAgeingResult {
+  const today = new Date()
+  const emptyBuckets = () => Object.fromEntries(AGEING_BUCKETS.map(b => [b, 0])) as Record<string, number>
+
+  const gross: Record<string, { buckets: Record<string, number>; overdue: number; count: number }> = {}
+
+  for (const it of items) {
+    const bal = it.balance || 0
+    if (!bal) continue
+    const name = canonical((it as Record<string, unknown>)[nameKey] as string, mapping)
+    if (!gross[name]) gross[name] = { buckets: emptyBuckets(), overdue: 0, count: 0 }
+
+    const due = new Date(it.due_date)
+    const days = Math.floor((today.getTime() - due.getTime()) / 86_400_000)
+    gross[name].buckets[bucketForDays(days)] += bal
+    gross[name].count += 1
+    if (days > 0) gross[name].overdue += bal
+  }
+
+  // Advances roll up to the same canonical grouping before being applied.
+  const advanceFor: Record<string, number> = {}
+  for (const [rawName, amt] of Object.entries(unapplied)) {
+    const name = canonical(rawName, mapping)
+    advanceFor[name] = (advanceFor[name] ?? 0) + amt
+  }
+  for (const name of Object.keys(advanceFor)) {
+    if (!gross[name]) gross[name] = { buckets: emptyBuckets(), overdue: 0, count: 0 }
+  }
+
+  const entities: NetAgeingEntity[] = Object.entries(gross).map(([name, g]) => {
+    const grossTotal = Object.values(g.buckets).reduce((s, v) => s + v, 0)
+    const advance = advanceFor[name] ?? 0
+
+    // FIFO — oldest bucket first, since the oldest document settles first.
+    const net = { ...g.buckets }
+    let left = advance
+    for (let i = AGEING_BUCKETS.length - 1; i >= 0 && left > 0; i--) {
+      const b = AGEING_BUCKETS[i]
+      const applied = Math.min(net[b], left)
+      net[b] -= applied
+      left -= applied
+    }
+
+    return {
+      name,
+      buckets: net,
+      grossBuckets: g.buckets,
+      total: grossTotal - (advance - left), // only what was actually absorbed
+      grossTotal,
+      overdue: Math.max(0, g.overdue - advance),
+      grossOverdue: g.overdue,
+      advance,
+      unabsorbedAdvance: left,
+      count: g.count,
+    }
+  })
+    .filter(e => e.grossTotal !== 0 || e.advance !== 0)
+    .sort((a, b) => b.total - a.total)
+
+  const bucketTotals = AGEING_BUCKETS.map(label => ({
+    label,
+    amount: entities.reduce((s, e) => s + e.buckets[label], 0),
+  }))
+
+  return {
+    entities,
+    bucketTotals,
+    total: entities.reduce((s, e) => s + e.total, 0),
+    grossTotal: entities.reduce((s, e) => s + e.grossTotal, 0),
+    overdue: entities.reduce((s, e) => s + e.overdue, 0),
+    grossOverdue: entities.reduce((s, e) => s + e.grossOverdue, 0),
+    advance: entities.reduce((s, e) => s + (e.advance - e.unabsorbedAdvance), 0),
+  }
+}
+
 // ── Server-side aggregation ─────────────────────────────────────
 //
 // Entity totals used to be computed by pulling every invoice/bill row into

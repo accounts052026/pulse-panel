@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import {
+  getCachedInvoices as getInvoices, getCachedBills as getBills,
   getEntityTotals, getEntityMapping, canonical,
   getEntityCategoryMap, getDerivedVendorCategories, getUnappliedByEntity,
+  computeNetAgeing,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -17,7 +19,9 @@ export const maxDuration = 60
 // it — take many seconds to respond.
 export async function GET() {
   try {
-    const [payableTotals, receivableTotals, mapping, savedCategories, derivedCategories, unappliedAp, unappliedAr] = await Promise.all([
+    const [invoices, bills, payableTotals, receivableTotals, mapping, savedCategories, derivedCategories, unappliedAp, unappliedAr] = await Promise.all([
+      getInvoices(),
+      getBills(),
       getEntityTotals("payable"),
       getEntityTotals("receivable"),
       getEntityMapping(),
@@ -27,6 +31,15 @@ export async function GET() {
       getUnappliedByEntity("receivable"),
     ])
 
+    // The grouped (canonical) figures come from the SAME shared calculation
+    // the dashboard and ageing tabs use, so all three agree by construction.
+    const EXCLUDED = new Set(["draft", "void", "voided"])
+    const isLive = (s?: string) => !EXCLUDED.has((s ?? "").toLowerCase())
+    const netBySide = {
+      payable:    computeNetAgeing(bills.filter(b => isLive(b.status)), "vendor_name", mapping, unappliedAp),
+      receivable: computeNetAgeing(invoices.filter(i => isLive(i.status)), "customer_name", mapping, unappliedAr),
+    }
+
     const lookup = (map: Record<string, string>, name: string) =>
       map[name] ?? map[name.trim().toLowerCase()] ?? null
 
@@ -35,14 +48,6 @@ export async function GET() {
       side: "payable" | "receivable",
       unapplied: Record<string, number>,
     ) => {
-      // Advances are held against a legal entity but must offset the whole
-      // platform they belong to, so they're rolled up to canonical names
-      // before being applied.
-      const advanceFor: Record<string, number> = {}
-      for (const [rawName, amt] of Object.entries(unapplied)) {
-        const key = canonical(rawName, mapping)
-        advanceFor[key] = (advanceFor[key] ?? 0) + amt
-      }
       // raw (unmapped) list — for the Entity Master editor
       const rawList = totals.map(t => {
         const canonical_name = canonical(t.entity_name, mapping)
@@ -66,37 +71,18 @@ export async function GET() {
         }
       }).sort((a, b) => b.total - a.total)
 
-      // canonically-grouped list — for dashboard display
-      const grouped: Record<string, { total: number; overdue: number; count: number }> = {}
-      for (const r of rawList) {
-        const key = r.canonical_name
-        if (!grouped[key]) grouped[key] = { total: 0, overdue: 0, count: 0 }
-        grouped[key].total += r.total
-        grouped[key].overdue += r.overdue
-        grouped[key].count += r.count
-      }
-      const groupedList = Object.entries(grouped)
-        .map(([name, v]) => {
-          const advance = advanceFor[name] ?? 0
-          // FIFO: an advance settles the oldest documents first, which are
-          // by definition the overdue ones — so overdue absorbs the advance
-          // before anything current does. Netting the total but not the
-          // overdue is what produced impossible figures like "155% overdue".
-          const netOverdue = Math.max(0, v.overdue - advance)
-          const netTotal = v.total - advance
-          return {
-            name,
-            grossTotal: v.total,
-            grossOverdue: v.overdue,
-            advance,
-            unabsorbedAdvance: Math.max(0, advance - v.total),
-            total: netTotal,
-            overdue: netOverdue,
-            count: v.count,
-            pct: netTotal > 0 ? (netOverdue / netTotal) * 100 : 0,
-          }
-        })
-        .sort((a, b) => b.total - a.total)
+      // canonically-grouped list — straight from the shared calculation
+      const groupedList = netBySide[side].entities.map(e => ({
+        name: e.name,
+        grossTotal: e.grossTotal,
+        grossOverdue: e.grossOverdue,
+        advance: e.advance,
+        unabsorbedAdvance: e.unabsorbedAdvance,
+        total: e.total,
+        overdue: e.overdue,
+        count: e.count,
+        pct: e.total > 0 ? Math.min(100, (e.overdue / e.total) * 100) : 0,
+      }))
 
       return { raw: rawList, grouped: groupedList, side }
     }

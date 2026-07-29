@@ -11,7 +11,14 @@ interface EntityAgeing {
   advance: number
   unabsorbedAdvance: number
 }
-interface AgeingData { buckets: string[]; payables: EntityAgeing[]; receivables: EntityAgeing[]; asOf: string }
+interface SideTotals { total: number; grossTotal: number; advance: number; overdue: number }
+interface AgeingData {
+  buckets: string[]
+  payables: EntityAgeing[]
+  receivables: EntityAgeing[]
+  totals: { payables: SideTotals; receivables: SideTotals }
+  asOf: string
+}
 
 function AgeingTable({ title, rows, buckets, entityLabel }: { title: string; rows: EntityAgeing[]; buckets: string[]; entityLabel: string }) {
   const [showAll, setShowAll] = useState(false)

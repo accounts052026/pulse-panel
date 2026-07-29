@@ -3,6 +3,7 @@ import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
   getLastSyncedAt, getEntityMapping, canonical, getUnappliedByEntity,
+  computeNetAgeing,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -83,29 +84,30 @@ export async function GET(req: NextRequest) {
       getUnappliedByEntity("receivable"), getUnappliedByEntity("payable"),
     ])
 
-    const sumUnapplied = (m: Record<string, number>) => Object.values(m).reduce((s, v) => s + v, 0)
-    const unearnedRevenue = sumUnapplied(unappliedAr) // customer advances
-    const prepaidExpenses = sumUnapplied(unappliedAp) // vendor advances
-
-    const invoices = allInvoices.filter(i => isLive(i.status) && inRange(i.date, from, to))
-    const bills    = allBills.filter(b => isLive(b.status) && inRange(b.date, from, to))
+    // Balances are a snapshot as of today and are deliberately NOT filtered
+    // by the selected date range — an invoice raised in a prior year that is
+    // still unpaid is still receivable now. Date-filtering them is what made
+    // this page disagree with the Receivables/Payables/Ageing tabs (1.84 Cr
+    // here vs 3.36 Cr there, on identical data).
+    const invoices = allInvoices.filter(i => isLive(i.status))
+    const bills    = allBills.filter(b => isLive(b.status))
+    // Expenses are a flow, so the range genuinely applies to them.
     const expenses = allExpenses.filter(e => inRange(e.date, from, to))
 
     // ── KPI totals ──────────────────────────────────────────────
-    // Net of advances: receivables less unearned revenue, payables less
-    // prepaid expenses. The gross Zoho balance ignores cash already held
-    // against the party and so overstates both sides.
-    const grossPayables    = bills.reduce((s, b) => s + (b.balance || 0), 0)
-    const grossReceivables = invoices.reduce((s, i) => s + (i.balance || 0), 0)
-    const totalPayables    = grossPayables - prepaidExpenses
-    const totalReceivables = grossReceivables - unearnedRevenue
-    // FIFO — advances settle the oldest documents first, so they absorb
-    // overdue balances before current ones. Netting the total but leaving
-    // overdue gross is what made overdue exceed 100% of the total.
-    const grossPayablesOverdue    = bills.filter(b => isOverdue(b.due_date, b.balance)).reduce((s, b) => s + b.balance, 0)
-    const grossReceivablesOverdue = invoices.filter(i => isOverdue(i.due_date, i.balance)).reduce((s, i) => s + i.balance, 0)
-    const payablesOverdue    = Math.max(0, grossPayablesOverdue - prepaidExpenses)
-    const receivablesOverdue = Math.max(0, grossReceivablesOverdue - unearnedRevenue)
+    // Derived from the SAME shared calculation the other tabs use, so the
+    // figures agree by construction rather than by coincidence.
+    const arNet = computeNetAgeing(invoices, "customer_name", mapping, unappliedAr)
+    const apNet = computeNetAgeing(bills, "vendor_name", mapping, unappliedAp)
+
+    const unearnedRevenue = arNet.advance
+    const prepaidExpenses = apNet.advance
+    const grossPayables    = apNet.grossTotal
+    const grossReceivables = arNet.grossTotal
+    const totalPayables    = apNet.total
+    const totalReceivables = arNet.total
+    const payablesOverdue    = apNet.overdue
+    const receivablesOverdue = arNet.overdue
 
     const now = new Date()
 
@@ -127,21 +129,10 @@ export async function GET(req: NextRequest) {
     const cashAndBankBalance = bankAccounts.reduce((s, a) => s + (a.balance || 0), 0)
 
     // ── Ageing ──────────────────────────────────────────────────
-    // Advances applied FIFO (oldest bucket first) so these donuts sum to the
-    // same net figure shown on the KPI cards above them.
-    const applyAdvanceFifo = (buckets: AgeingBucket[], advance: number): AgeingBucket[] => {
-      let left = advance
-      const out = buckets.map(b => ({ ...b }))
-      for (let i = out.length - 1; i >= 0 && left > 0; i--) {
-        const applied = Math.min(out[i].amount, left)
-        out[i].amount -= applied
-        left -= applied
-      }
-      return out
-    }
-
-    const payablesAgeing    = applyAdvanceFifo(ageingBuckets(bills), prepaidExpenses)
-    const receivablesAgeing = applyAdvanceFifo(ageingBuckets(invoices), unearnedRevenue)
+    // Straight from the shared calculation, so these donuts sum exactly to
+    // the KPI cards above them and to the Ageing Analysis tab.
+    const payablesAgeing    = apNet.bucketTotals
+    const receivablesAgeing = arNet.bucketTotals
 
     // ── Expense by category (selected range) ─────────────────────
     const catMap: Record<string, number> = {}
@@ -154,8 +145,16 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.amount - a.amount)
 
     // ── Top vendors / customers ──────────────────────────────────
-    const payablesByVendor   = topByEntity(bills, "vendor_name", mapping)
-    const receivablesByCustomer = topByEntity(invoices, "customer_name", mapping)
+    // Taken from the shared net calculation so these rows tie back to the
+    // Payables/Receivables tabs instead of being computed a second way.
+    const topFrom = (net: typeof arNet, n = 5) => {
+      const rows = net.entities
+        .map(e => ({ name: e.name, total: e.total, overdue: e.overdue, pct: e.total > 0 ? Math.min(100, (e.overdue / e.total) * 100) : 0 }))
+        .filter(r => r.total !== 0)
+      return { top: rows.slice(0, n), rest: rows.slice(n) }
+    }
+    const payablesByVendor      = topFrom(apNet)
+    const receivablesByCustomer = topFrom(arNet)
 
     // ── Top overdue invoices/bills ─────────────────────────────
     // party name was previously read straight off the raw Zoho record —
