@@ -583,19 +583,30 @@ export interface NetAgeingResult {
 }
 
 export function computeNetAgeing(
-  items: { balance: number; due_date: string; status?: string }[],
+  items: { balance: number; due_date: string; date?: string; status?: string }[],
   nameKey: string,
   mapping: Record<string, string>,
   unapplied: Record<string, number>,
+  // "As on" date. A balance is a point-in-time figure, so a period filter
+  // has to mean "show the position as at this date" rather than "only count
+  // documents dated inside the period" — an invoice raised last year and
+  // still unpaid is part of today's balance. Documents dated after this are
+  // excluded, and ageing is measured from it.
+  asOn: Date = new Date(),
 ): NetAgeingResult {
-  const today = new Date()
+  const today = asOn
   const emptyBuckets = () => Object.fromEntries(AGEING_BUCKETS.map(b => [b, 0])) as Record<string, number>
 
   const gross: Record<string, { buckets: Record<string, number>; overdue: number; count: number }> = {}
 
+  const asOnIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+
   for (const it of items) {
     const bal = it.balance || 0
     if (!bal) continue
+    // A document raised after the as-on date isn't part of that date's
+    // position.
+    if (it.date && it.date.slice(0, 10) > asOnIso) continue
     const name = canonical((it as Record<string, unknown>)[nameKey] as string, mapping)
     if (!gross[name]) gross[name] = { buckets: emptyBuckets(), overdue: 0, count: 0 }
 

@@ -30,8 +30,10 @@ function ageingBuckets(items: { balance: number; due_date: string }[]): AgeingBu
   return Object.entries(buckets).map(([label, amount]) => ({ label, amount }))
 }
 
-function isOverdue(due_date: string, balance: number) {
-  return balance > 0 && new Date(due_date) < new Date()
+// asOn lets overdue be evaluated at the period end rather than always today,
+// so a past period reports the position as it stood then.
+function isOverdue(due_date: string, balance: number, asOn: Date = new Date()) {
+  return balance > 0 && new Date(due_date) < asOn
 }
 
 function topByEntity<T extends { balance: number }>(items: T[], nameKey: keyof T, mapping: Record<string, string>, n = 5) {
@@ -98,8 +100,18 @@ export async function GET(req: NextRequest) {
     // ── KPI totals ──────────────────────────────────────────────
     // Derived from the SAME shared calculation the other tabs use, so the
     // figures agree by construction rather than by coincidence.
-    const arNet = computeNetAgeing(invoices, "customer_name", mapping, unappliedAr)
-    const apNet = computeNetAgeing(bills, "vendor_name", mapping, unappliedAp)
+    // Balances are reported "as on" the period end, capped at today (the
+    // current FY ends in the future and we can't show a future position).
+    // With the default FY this resolves to today, so the dashboard still
+    // ties exactly to the Payables/Receivables/Ageing tabs; picking a past
+    // period shows that historical position instead of a static one.
+    const todayDate = new Date()
+    const toDate = new Date(to)
+    const asOn = toDate < todayDate ? toDate : todayDate
+    const asOnIsPast = toDate < todayDate
+
+    const arNet = computeNetAgeing(invoices, "customer_name", mapping, unappliedAr, asOn)
+    const apNet = computeNetAgeing(bills, "vendor_name", mapping, unappliedAp, asOn)
 
     // Zoho's own closing position — matches the Vendor/Customer Balance
     // Summary reports exactly, because it includes opening balances and
@@ -109,7 +121,11 @@ export async function GET(req: NextRequest) {
     const sumOut = (rows: { outstanding: number }[]) => rows.reduce((s, r) => s + r.outstanding, 0)
     const sumCredits = (rows: { credits: number }[]) => rows.reduce((s, r) => s + r.credits, 0)
 
-    const haveContacts = contactsAp.length > 0 || contactsAr.length > 0
+    // Zoho's contact balances are a CURRENT snapshot — they carry no history,
+    // so they're only valid when the as-on date is today. For a past period
+    // we fall back to the document-derived position, which can be rebuilt
+    // for any date.
+    const haveContacts = !asOnIsPast && (contactsAp.length > 0 || contactsAr.length > 0)
 
     const unearnedRevenue = haveContacts ? sumCredits(contactsAr) : arNet.advance
     const prepaidExpenses = haveContacts ? sumCredits(contactsAp) : apNet.advance
@@ -182,22 +198,33 @@ export async function GET(req: NextRequest) {
     // showing raw/duplicate vendor names even after mapping them in
     // Entity Master. Apply the same `mapping[raw] ?? raw` lookup used by
     // the top-vendor/customer tables above.
+    const asOnIsoStr = asOn.toISOString().slice(0, 10)
     const overdueBills = bills
-      .filter(b => isOverdue(b.due_date, b.balance))
+      .filter(b => (!b.date || b.date.slice(0, 10) <= asOnIsoStr) && isOverdue(b.due_date, b.balance, asOn))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 5)
       .map(b => ({ doc_no: b.bill_number, party: canonical(b.vendor_name, mapping), due_date: b.due_date, overdue: b.balance, side: "payable" as const }))
 
     const overdueInvoices = invoices
-      .filter(i => isOverdue(i.due_date, i.balance))
+      .filter(i => (!i.date || i.date.slice(0, 10) <= asOnIsoStr) && isOverdue(i.due_date, i.balance, asOn))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 5)
       .map(i => ({ doc_no: i.invoice_number, party: canonical(i.customer_name, mapping), due_date: i.due_date, overdue: i.balance, side: "receivable" as const }))
 
-    // ── Trend — last 6 months ────────────────────────────────────
+    // ── Trend — every month in the selected period ───────────────
+    // Previously hardcoded to the last 6 months, so the charts sat
+    // unchanged whatever period was picked. Now it walks the actual range
+    // (capped at 24 points so a multi-year range stays readable).
     const months: string[] = []
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const trendStart = new Date(from)
+    const trendEnd = toDate < todayDate ? toDate : todayDate
+    const cursor = new Date(trendStart.getFullYear(), trendStart.getMonth(), 1)
+    while (cursor <= trendEnd && months.length < 24) {
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`)
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+    if (months.length === 0) {
+      const d = new Date(trendEnd.getFullYear(), trendEnd.getMonth(), 1)
       months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
     }
     const trend = months.map(m => ({
@@ -208,8 +235,9 @@ export async function GET(req: NextRequest) {
     }))
 
     // ── Summary stats ─────────────────────────────────────────────
-    const openInvoices  = invoices.filter(i => i.balance > 0).length
-    const overdueCount  = invoices.filter(i => isOverdue(i.due_date, i.balance)).length + bills.filter(b => isOverdue(b.due_date, b.balance)).length
+    const openInvoices  = invoices.filter(i => i.balance > 0 && (!i.date || i.date.slice(0, 10) <= asOnIsoStr)).length
+    const overdueCount  = invoices.filter(i => isOverdue(i.due_date, i.balance, asOn)).length
+                        + bills.filter(b => isOverdue(b.due_date, b.balance, asOn)).length
 
     const avgPaymentDays = avgDaysToClose(bills.filter(b => b.status === "paid"))
     const avgCollectionDays = avgDaysToClose(invoices.filter(i => i.status === "paid"))

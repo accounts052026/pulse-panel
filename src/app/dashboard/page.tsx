@@ -258,14 +258,14 @@ function TrendChart({ trend }: { trend: DashboardData["trend"] }) {
   )
 }
 
-function ExpenseTrendChart({ trend }: { trend: DashboardData["trend"] }) {
+function ExpenseTrendChart({ trend, label }: { trend: DashboardData["trend"]; label: string }) {
   const data = trend.map(t => ({
     month: new Date(t.month + "-01").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
     Expenses: t.expenses,
   }))
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, flex: 1, minWidth: 360, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Expense Trend (Last 6 Months)</div>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Expense Trend ({label})</div>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
           <CartesianGrid stroke={C.border} vertical={false} />
@@ -401,7 +401,7 @@ export default function ZohoDashboard() {
             {/* Trends */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
               <TrendChart trend={data.trend} />
-              <ExpenseTrendChart trend={data.trend} />
+              <ExpenseTrendChart trend={data.trend} label={range.label} />
               <SummaryCard summary={data.summary} />
             </div>
           </div>
