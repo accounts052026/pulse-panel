@@ -94,6 +94,12 @@ export const ZOHO_MODULE_CONFIG: Record<string, { path: string; listKey: string;
   journals:         { path: "/journals",         listKey: "journals" },
   expenses:         { path: "/expenses",         listKey: "expenses" },
   bankaccounts:     { path: "/bankaccounts",      listKey: "bankaccounts" },
+  // Contacts carry Zoho's OWN authoritative closing balance per party —
+  // outstanding_*_amount and unused_credits_*_amount. These include opening
+  // balances and unapplied credits, neither of which can be derived from
+  // invoices/bills alone, which is why summing document balances came out
+  // ~46L higher than Zoho's Vendor Balance Summary.
+  contacts:         { path: "/contacts",          listKey: "contacts" },
 }
 
 // Fetch exactly one page (used for resumable batch syncing).

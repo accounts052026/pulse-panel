@@ -11,7 +11,7 @@ import { ZOHO_MODULE_CONFIG, zohoFetchOnePage, zohoFetchDetail } from "./zoho"
 export const ZOHO_MODULES = [
   "invoices", "bills", "creditnotes", "vendorcredits",
   "customerpayments", "vendorpayments", "journals",
-  "expenses", "bankaccounts",
+  "expenses", "bankaccounts", "contacts",
 ] as const
 export type ZohoModule = (typeof ZOHO_MODULES)[number]
 
@@ -64,6 +64,16 @@ async function ensureTables() {
   await sql`
     CREATE TABLE IF NOT EXISTS zoho_bankaccounts (
       account_id TEXT PRIMARY KEY, account_name TEXT, balance NUMERIC,
+      synced_at TIMESTAMPTZ DEFAULT NOW()
+    )`
+  // Zoho's own closing balance per party, including opening balances and
+  // unapplied credits — the same figures behind the Vendor/Customer Balance
+  // Summary reports.
+  await sql`
+    CREATE TABLE IF NOT EXISTS zoho_contacts (
+      contact_id TEXT PRIMARY KEY, contact_name TEXT, contact_type TEXT,
+      outstanding_receivable NUMERIC DEFAULT 0, outstanding_payable NUMERIC DEFAULT 0,
+      unused_credits_receivable NUMERIC DEFAULT 0, unused_credits_payable NUMERIC DEFAULT 0,
       synced_at TIMESTAMPTZ DEFAULT NOW()
     )`
   await sql`
@@ -174,6 +184,22 @@ async function upsertRow(module: string, r: any): Promise<void> {
           account_name=EXCLUDED.account_name, balance=EXCLUDED.balance, synced_at=NOW()
       `
       return
+    case "contacts":
+      await sql`
+        INSERT INTO zoho_contacts (contact_id, contact_name, contact_type,
+          outstanding_receivable, outstanding_payable,
+          unused_credits_receivable, unused_credits_payable, synced_at)
+        VALUES (${r.contact_id}, ${r.contact_name}, ${r.contact_type || ""},
+          ${r.outstanding_receivable_amount || 0}, ${r.outstanding_payable_amount || 0},
+          ${r.unused_credits_receivable_amount || 0}, ${r.unused_credits_payable_amount || 0}, NOW())
+        ON CONFLICT (contact_id) DO UPDATE SET
+          contact_name=EXCLUDED.contact_name, contact_type=EXCLUDED.contact_type,
+          outstanding_receivable=EXCLUDED.outstanding_receivable,
+          outstanding_payable=EXCLUDED.outstanding_payable,
+          unused_credits_receivable=EXCLUDED.unused_credits_receivable,
+          unused_credits_payable=EXCLUDED.unused_credits_payable, synced_at=NOW()
+      `
+      return
   }
 }
 
@@ -182,6 +208,7 @@ const TABLE_FOR_MODULE: Record<string, string> = {
   vendorcredits: "zoho_vendorcredits", customerpayments: "zoho_customerpayments",
   vendorpayments: "zoho_vendorpayments", journals: "zoho_journals",
   expenses: "zoho_expenses", bankaccounts: "zoho_bankaccounts",
+  contacts: "zoho_contacts",
 }
 
 // Resumable batch sync — fetches only a bounded number of Zoho pages per
@@ -660,7 +687,65 @@ export interface EntityTotal {
 // expenses (money paid to a vendor not matched to any bill). Reporting the
 // gross Zoho balance alone overstates both sides, because it ignores cash
 // already sitting against that party.
+// Zoho's own closing position per contact — the numbers behind the
+// Vendor/Customer Balance Summary reports.
+//
+// `outstanding` here already includes opening balances, which cannot be
+// reconstructed from invoices/bills alone. Summing document balances was
+// therefore always going to disagree with Zoho: e.g. Swiggy shows a closing
+// balance well above (billed − paid) purely because of an opening balance.
+// `credits` are unapplied advances/credit notes sitting against the party.
+export interface ContactBalance {
+  name: string
+  outstanding: number
+  credits: number
+  net: number
+}
+
+export async function getContactBalances(side: "payable" | "receivable"): Promise<ContactBalance[]> {
+  await ensureTables()
+  const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+  const outCol = side === "payable" ? "outstanding_payable" : "outstanding_receivable"
+  const credCol = side === "payable" ? "unused_credits_payable" : "unused_credits_receivable"
+
+  const res = await sql(`
+    SELECT COALESCE(json_agg(t), '[]'::json) AS data FROM (
+      SELECT COALESCE(NULLIF(TRIM(contact_name), ''), 'Unknown') AS name,
+             COALESCE(SUM(${outCol}), 0)::float8  AS outstanding,
+             COALESCE(SUM(${credCol}), 0)::float8 AS credits
+      FROM zoho_contacts
+      GROUP BY 1
+    ) t
+  `)
+
+  const raw = rowsOf<{ data: unknown }>(res)[0]?.data
+  if (!raw) return []
+  const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+  if (!Array.isArray(arr)) return []
+
+  return (arr as { name: string; outstanding: number; credits: number }[])
+    .map(r => ({
+      name: r.name,
+      outstanding: num(r.outstanding),
+      credits: num(r.credits),
+      net: num(r.outstanding) - num(r.credits),
+    }))
+    .filter(r => r.outstanding !== 0 || r.credits !== 0)
+}
+
 export async function getUnappliedByEntity(side: "payable" | "receivable"): Promise<Record<string, number>> {
+  // Prefer Zoho's own unused-credits figure per contact; it accounts for
+  // credit notes and advances that never appear as an unapplied payment.
+  const contacts = await getContactBalances(side)
+  if (contacts.some(c => c.credits !== 0)) {
+    const out: Record<string, number> = {}
+    for (const c of contacts) if (c.credits) out[c.name] = c.credits
+    return out
+  }
+  return getUnappliedFromPayments(side)
+}
+
+async function getUnappliedFromPayments(side: "payable" | "receivable"): Promise<Record<string, number>> {
   await ensureTables()
   const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
   const table = side === "payable" ? "zoho_vendorpayments" : "zoho_customerpayments"

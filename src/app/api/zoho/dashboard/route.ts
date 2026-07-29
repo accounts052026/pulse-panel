@@ -3,7 +3,7 @@ import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
   getLastSyncedAt, getEntityMapping, canonical, getUnappliedByEntity,
-  computeNetAgeing,
+  computeNetAgeing, getContactBalances,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -79,9 +79,10 @@ export async function GET(req: NextRequest) {
     const from = req.nextUrl.searchParams.get("from") || fy.from
     const to   = req.nextUrl.searchParams.get("to")   || fy.to
 
-    const [allInvoices, allBills, allExpenses, bankAccounts, mapping, unappliedAr, unappliedAp] = await Promise.all([
+    const [allInvoices, allBills, allExpenses, bankAccounts, mapping, unappliedAr, unappliedAp, contactsAr, contactsAp] = await Promise.all([
       getInvoices(), getBills(), getExpenses(), getBankAccounts(), getEntityMapping(),
       getUnappliedByEntity("receivable"), getUnappliedByEntity("payable"),
+      getContactBalances("receivable"), getContactBalances("payable"),
     ])
 
     // Balances are a snapshot as of today and are deliberately NOT filtered
@@ -100,14 +101,33 @@ export async function GET(req: NextRequest) {
     const arNet = computeNetAgeing(invoices, "customer_name", mapping, unappliedAr)
     const apNet = computeNetAgeing(bills, "vendor_name", mapping, unappliedAp)
 
-    const unearnedRevenue = arNet.advance
-    const prepaidExpenses = apNet.advance
-    const grossPayables    = apNet.grossTotal
-    const grossReceivables = arNet.grossTotal
-    const totalPayables    = apNet.total
-    const totalReceivables = arNet.total
-    const payablesOverdue    = apNet.overdue
-    const receivablesOverdue = arNet.overdue
+    // Zoho's own closing position — matches the Vendor/Customer Balance
+    // Summary reports exactly, because it includes opening balances and
+    // credits that document-level balances can't reproduce. This is the
+    // figure the headline KPIs report, so the dashboard ties to Zoho.
+    const sumNet = (rows: { net: number }[]) => rows.reduce((s, r) => s + r.net, 0)
+    const sumOut = (rows: { outstanding: number }[]) => rows.reduce((s, r) => s + r.outstanding, 0)
+    const sumCredits = (rows: { credits: number }[]) => rows.reduce((s, r) => s + r.credits, 0)
+
+    const haveContacts = contactsAp.length > 0 || contactsAr.length > 0
+
+    const unearnedRevenue = haveContacts ? sumCredits(contactsAr) : arNet.advance
+    const prepaidExpenses = haveContacts ? sumCredits(contactsAp) : apNet.advance
+    const grossPayables    = haveContacts ? sumOut(contactsAp) : apNet.grossTotal
+    const grossReceivables = haveContacts ? sumOut(contactsAr) : arNet.grossTotal
+    const totalPayables    = haveContacts ? sumNet(contactsAp) : apNet.total
+    const totalReceivables = haveContacts ? sumNet(contactsAr) : arNet.total
+
+    // Overdue still comes from documents (contacts carry no due dates), so
+    // it's capped at the authoritative net to stay internally consistent.
+    const payablesOverdue    = Math.min(apNet.overdue, Math.max(0, totalPayables))
+    const receivablesOverdue = Math.min(arNet.overdue, Math.max(0, totalReceivables))
+
+    // Difference between Zoho's closing position and the sum of open
+    // documents — opening balances, and anything not represented by an
+    // invoice/bill. Surfaced rather than silently absorbed.
+    const payablesUnreconciled    = totalPayables - apNet.total
+    const receivablesUnreconciled = totalReceivables - arNet.total
 
     const now = new Date()
 
@@ -201,6 +221,8 @@ export async function GET(req: NextRequest) {
         receivablesOverduePct: totalReceivables > 0 ? Math.min(100, (receivablesOverdue / totalReceivables) * 100) : 0,
         expensesThisMonth, expensesMomPct, cashAndBankBalance,
         grossPayables, grossReceivables, unearnedRevenue, prepaidExpenses,
+        payablesUnreconciled, receivablesUnreconciled,
+        source: haveContacts ? "zoho-contacts" : "documents",
       },
       payablesAgeing, receivablesAgeing, expenseByCategory,
       payablesByVendor, receivablesByCustomer,
