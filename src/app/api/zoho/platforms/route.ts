@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
-import { getCachedInvoices as getInvoices, getCachedBills as getBills, getLastSyncedAt, getEntityMapping, canonical } from "@/lib/zoho-store"
+import {
+  getCachedInvoices as getInvoices, getCachedBills as getBills,
+  getLastSyncedAt, getEntityMapping, canonical, getUnappliedByEntity,
+} from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -42,7 +45,9 @@ function isOverdue(due_date: string, balance: number) {
   return balance > 0 && new Date(due_date) < new Date()
 }
 
-function byPlatform<T extends { balance: number; due_date: string }>(items: T[], nameKey: keyof T, mapping: Record<string, string>) {
+function byPlatform<T extends { balance: number; due_date: string }>(
+  items: T[], nameKey: keyof T, mapping: Record<string, string>, unapplied: Record<string, number>
+) {
   const map: Record<string, { total: number; overdue: number; count: number }> = {}
   for (const it of items) {
     if (!it.balance) continue
@@ -52,16 +57,37 @@ function byPlatform<T extends { balance: number; due_date: string }>(items: T[],
     map[platform].count += 1
     if (isOverdue(it.due_date, it.balance)) map[platform].overdue += it.balance
   }
+
+  // Advances roll up to the same platform grouping before being applied.
+  const advanceFor: Record<string, number> = {}
+  for (const [rawName, amt] of Object.entries(unapplied)) {
+    const p = matchPlatform(rawName, mapping)
+    advanceFor[p] = (advanceFor[p] ?? 0) + amt
+  }
+
   return Object.entries(map)
-    .map(([name, v]) => ({ name, total: v.total, overdue: v.overdue, count: v.count, pct: v.total ? (v.overdue / v.total) * 100 : 0 }))
+    .map(([name, v]) => {
+      const advance = advanceFor[name] ?? 0
+      // FIFO — the advance clears the oldest (overdue) balances first.
+      const overdue = Math.max(0, v.overdue - advance)
+      const total = v.total - advance
+      return {
+        name, total, overdue, count: v.count,
+        grossTotal: v.total, grossOverdue: v.overdue, advance,
+        pct: total > 0 ? Math.min(100, (overdue / total) * 100) : 0,
+      }
+    })
     .sort((a, b) => b.total - a.total)
 }
 
 export async function GET() {
   try {
-    const [invoices, bills, mapping] = await Promise.all([getInvoices(), getBills(), getEntityMapping()])
-    const receivablesByPlatform = byPlatform(invoices, "customer_name", mapping)
-    const payablesByPlatform = byPlatform(bills, "vendor_name", mapping)
+    const [invoices, bills, mapping, unappliedAr, unappliedAp] = await Promise.all([
+      getInvoices(), getBills(), getEntityMapping(),
+      getUnappliedByEntity("receivable"), getUnappliedByEntity("payable"),
+    ])
+    const receivablesByPlatform = byPlatform(invoices, "customer_name", mapping, unappliedAr)
+    const payablesByPlatform = byPlatform(bills, "vendor_name", mapping, unappliedAp)
 
     // Combined view — every platform appearing on either side, so
     // receivables and payables can be compared in one window.

@@ -6,8 +6,11 @@
 import { useEffect, useState } from "react"
 import { C, fmt, fmtFull, pct, Sidebar } from "@/lib/dashboard-ui"
 
-interface GroupedRow { name: string; total: number; overdue: number; count: number; pct: number }
-interface RawRow { entity_name: string; canonical_name: string; mapped: boolean; total: number; overdue: number; count: number }
+interface GroupedRow {
+  name: string; total: number; overdue: number; count: number; pct: number
+  grossTotal: number; grossOverdue: number; advance: number; unabsorbedAdvance: number
+}
+interface RawRow { entity_name: string; canonical_name: string; mapped: boolean; total: number; overdue: number; count: number; advance: number }
 interface EntitiesResponse {
   payables: { raw: RawRow[]; grouped: GroupedRow[] }
   receivables: { raw: RawRow[]; grouped: GroupedRow[] }
@@ -46,7 +49,10 @@ export function LedgerPage({ side }: { side: "payables" | "receivables" }) {
 
   const total = grouped.reduce((s, r) => s + r.total, 0)
   const overdue = grouped.reduce((s, r) => s + r.overdue, 0)
+  const grossTotal = grouped.reduce((s, r) => s + r.grossTotal, 0)
+  const totalAdvance = grouped.reduce((s, r) => s + r.advance, 0)
   const mappedCount = (sideData?.raw ?? []).filter(r => r.mapped).length
+  const advanceLabel = isPay ? "Prepaid" : "Unearned"
 
   const th = (label: string, key: SortKey, align: "left" | "right" = "right") => (
     <th
@@ -88,8 +94,13 @@ export function LedgerPage({ side }: { side: "payables" | "receivables" }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 18px", flex: 1, minWidth: 190, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: C.dim, textTransform: "uppercase" as const, marginBottom: 8 }}>Total Outstanding</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: C.dim, textTransform: "uppercase" as const, marginBottom: 8 }}>Outstanding (net)</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: accent, letterSpacing: -0.4 }}>{fmt(total)}</div>
+                {totalAdvance > 0 && (
+                  <div style={{ fontSize: 11, color: C.dim, marginTop: 5 }}>
+                    Gross {fmt(grossTotal)} less {advanceLabel.toLowerCase()} {fmt(totalAdvance)}
+                  </div>
+                )}
               </div>
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 18px", flex: 1, minWidth: 190, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: C.dim, textTransform: "uppercase" as const, marginBottom: 8 }}>Overdue</div>
@@ -121,21 +132,28 @@ export function LedgerPage({ side }: { side: "payables" | "receivables" }) {
                       <tr style={{ background: "#F8FAFC" }}>
                         {th(entityLabel, "name", "left")}
                         {th("Docs", "count")}
-                        {th("Total (₹)", "total")}
+                        <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, fontWeight: 700, color: C.dim, whiteSpace: "nowrap" as const }}>Gross (₹)</th>
+                        <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, fontWeight: 700, color: C.dim, whiteSpace: "nowrap" as const }}>{advanceLabel} (₹)</th>
+                        {th("Net (₹)", "total")}
                         {th("Overdue (₹)", "overdue")}
                         <th style={{ padding: "10px 12px", textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, fontWeight: 700, color: C.dim }}>% Overdue</th>
                       </tr>
                     </thead>
                     <tbody>
                       {grouped.length === 0 && (
-                        <tr><td colSpan={5} style={{ padding: "20px 12px", textAlign: "center" as const, color: C.dim }}>No entries found</td></tr>
+                        <tr><td colSpan={7} style={{ padding: "20px 12px", textAlign: "center" as const, color: C.dim }}>No entries found</td></tr>
                       )}
                       {grouped.map(r => (
                         <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
                           <td style={{ padding: "11px 12px", fontWeight: 600 }}>{r.name}</td>
                           <td style={{ padding: "11px 12px", textAlign: "right" as const, color: C.dim }}>{r.count}</td>
-                          <td style={{ padding: "11px 12px", textAlign: "right" as const }}>{fmtFull(r.total)}</td>
-                          <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
+                          <td style={{ padding: "11px 12px", textAlign: "right" as const, color: C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(r.grossTotal)}</td>
+                          <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.advance ? C.green : C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>
+                            {r.advance ? `(${fmtFull(r.advance)})` : "—"}
+                            {r.unabsorbedAdvance > 0 && <div style={{ fontSize: 9.5, color: C.amber }}>{fmtFull(r.unabsorbedAdvance)} unapplied</div>}
+                          </td>
+                          <td style={{ padding: "11px 12px", textAlign: "right" as const, fontWeight: 700, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(r.total)}</td>
+                          <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.overdue ? C.red : C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{r.overdue ? fmtFull(r.overdue) : "—"}</td>
                           <td style={{ padding: "11px 12px", textAlign: "right" as const, color: r.pct >= 35 ? C.red : r.pct >= 15 ? C.amber : C.dim, fontWeight: 600 }}>{pct(r.pct)}</td>
                         </tr>
                       ))}
@@ -145,9 +163,11 @@ export function LedgerPage({ side }: { side: "payables" | "receivables" }) {
                         <tr style={{ borderTop: `2px solid ${C.border}`, fontWeight: 700, background: "#FAFBFD" }}>
                           <td style={{ padding: "12px" }}>Total</td>
                           <td style={{ padding: "12px", textAlign: "right" as const }}>{grouped.reduce((s, r) => s + r.count, 0)}</td>
-                          <td style={{ padding: "12px", textAlign: "right" as const }}>{fmtFull(total)}</td>
-                          <td style={{ padding: "12px", textAlign: "right" as const, color: C.red }}>{fmtFull(overdue)}</td>
-                          <td style={{ padding: "12px", textAlign: "right" as const }}>{pct(total ? (overdue / total) * 100 : 0)}</td>
+                          <td style={{ padding: "12px", textAlign: "right" as const, color: C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(grossTotal)}</td>
+                          <td style={{ padding: "12px", textAlign: "right" as const, color: C.green, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>({fmtFull(totalAdvance)})</td>
+                          <td style={{ padding: "12px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(total)}</td>
+                          <td style={{ padding: "12px", textAlign: "right" as const, color: C.red, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(overdue)}</td>
+                          <td style={{ padding: "12px", textAlign: "right" as const }}>{pct(total > 0 ? (overdue / total) * 100 : 0)}</td>
                         </tr>
                       </tfoot>
                     )}

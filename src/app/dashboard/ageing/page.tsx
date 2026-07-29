@@ -43,17 +43,26 @@ function AgeingTable({ title, rows, buckets, entityLabel }: { title: string; row
                 <td style={{ padding: "9px 8px", fontWeight: 600 }}>
                   {r.name}
                   {r.advance > 0 && (
-                    <div style={{ fontSize: 9.5, color: C.dim, marginTop: 2 }}>gross {fmtFull(r.grossTotal)}</div>
+                    <div style={{ fontSize: 9.5, color: C.dim, marginTop: 2, fontWeight: 500 }}>Gross {fmtFull(r.grossTotal)}</div>
                   )}
                 </td>
                 {buckets.map(b => {
                   const netted = r.advance > 0 && r.buckets[b] !== r.grossBuckets[b]
                   return (
-                    <td key={b} style={{ padding: "9px 8px", textAlign: "right" as const, color: r.buckets[b] ? C.text : C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>
+                    <td
+                      key={b}
+                      title={netted ? `Gross ${fmtFull(r.grossBuckets[b])} less advance applied` : undefined}
+                      style={{
+                        padding: "9px 8px", textAlign: "right" as const,
+                        color: r.buckets[b] ? C.text : C.dim,
+                        whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const,
+                        // A small marker beats a struck-through second number:
+                        // it flags that the figure was netted without the
+                        // visual noise of duplicated, crossed-out amounts.
+                        background: netted ? "#F0FDF4" : undefined,
+                      }}
+                    >
                       {r.buckets[b] ? fmtFull(r.buckets[b]) : "—"}
-                      {netted && (
-                        <div style={{ fontSize: 9.5, color: C.dim, textDecoration: "line-through" }}>{fmtFull(r.grossBuckets[b])}</div>
-                      )}
                     </td>
                   )
                 })}

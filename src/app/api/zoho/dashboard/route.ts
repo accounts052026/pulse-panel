@@ -99,8 +99,13 @@ export async function GET(req: NextRequest) {
     const grossReceivables = invoices.reduce((s, i) => s + (i.balance || 0), 0)
     const totalPayables    = grossPayables - prepaidExpenses
     const totalReceivables = grossReceivables - unearnedRevenue
-    const payablesOverdue    = bills.filter(b => isOverdue(b.due_date, b.balance)).reduce((s, b) => s + b.balance, 0)
-    const receivablesOverdue = invoices.filter(i => isOverdue(i.due_date, i.balance)).reduce((s, i) => s + i.balance, 0)
+    // FIFO — advances settle the oldest documents first, so they absorb
+    // overdue balances before current ones. Netting the total but leaving
+    // overdue gross is what made overdue exceed 100% of the total.
+    const grossPayablesOverdue    = bills.filter(b => isOverdue(b.due_date, b.balance)).reduce((s, b) => s + b.balance, 0)
+    const grossReceivablesOverdue = invoices.filter(i => isOverdue(i.due_date, i.balance)).reduce((s, i) => s + i.balance, 0)
+    const payablesOverdue    = Math.max(0, grossPayablesOverdue - prepaidExpenses)
+    const receivablesOverdue = Math.max(0, grossReceivablesOverdue - unearnedRevenue)
 
     const now = new Date()
 
@@ -122,8 +127,21 @@ export async function GET(req: NextRequest) {
     const cashAndBankBalance = bankAccounts.reduce((s, a) => s + (a.balance || 0), 0)
 
     // ── Ageing ──────────────────────────────────────────────────
-    const payablesAgeing    = ageingBuckets(bills)
-    const receivablesAgeing = ageingBuckets(invoices)
+    // Advances applied FIFO (oldest bucket first) so these donuts sum to the
+    // same net figure shown on the KPI cards above them.
+    const applyAdvanceFifo = (buckets: AgeingBucket[], advance: number): AgeingBucket[] => {
+      let left = advance
+      const out = buckets.map(b => ({ ...b }))
+      for (let i = out.length - 1; i >= 0 && left > 0; i--) {
+        const applied = Math.min(out[i].amount, left)
+        out[i].amount -= applied
+        left -= applied
+      }
+      return out
+    }
+
+    const payablesAgeing    = applyAdvanceFifo(ageingBuckets(bills), prepaidExpenses)
+    const receivablesAgeing = applyAdvanceFifo(ageingBuckets(invoices), unearnedRevenue)
 
     // ── Expense by category (selected range) ─────────────────────
     const catMap: Record<string, number> = {}
@@ -180,8 +198,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       kpis: {
         totalPayables, totalReceivables, payablesOverdue, receivablesOverdue,
-        payablesOverduePct: totalPayables ? (payablesOverdue / totalPayables) * 100 : 0,
-        receivablesOverduePct: totalReceivables ? (receivablesOverdue / totalReceivables) * 100 : 0,
+        payablesOverduePct: totalPayables > 0 ? Math.min(100, (payablesOverdue / totalPayables) * 100) : 0,
+        receivablesOverduePct: totalReceivables > 0 ? Math.min(100, (receivablesOverdue / totalReceivables) * 100) : 0,
         expensesThisMonth, expensesMomPct, cashAndBankBalance,
         grossPayables, grossReceivables, unearnedRevenue, prepaidExpenses,
       },
