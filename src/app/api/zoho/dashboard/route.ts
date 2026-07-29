@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
-  getLastSyncedAt, getEntityMapping, canonical,
+  getLastSyncedAt, getEntityMapping, canonical, getUnappliedByEntity,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -78,17 +78,27 @@ export async function GET(req: NextRequest) {
     const from = req.nextUrl.searchParams.get("from") || fy.from
     const to   = req.nextUrl.searchParams.get("to")   || fy.to
 
-    const [allInvoices, allBills, allExpenses, bankAccounts, mapping] = await Promise.all([
+    const [allInvoices, allBills, allExpenses, bankAccounts, mapping, unappliedAr, unappliedAp] = await Promise.all([
       getInvoices(), getBills(), getExpenses(), getBankAccounts(), getEntityMapping(),
+      getUnappliedByEntity("receivable"), getUnappliedByEntity("payable"),
     ])
+
+    const sumUnapplied = (m: Record<string, number>) => Object.values(m).reduce((s, v) => s + v, 0)
+    const unearnedRevenue = sumUnapplied(unappliedAr) // customer advances
+    const prepaidExpenses = sumUnapplied(unappliedAp) // vendor advances
 
     const invoices = allInvoices.filter(i => isLive(i.status) && inRange(i.date, from, to))
     const bills    = allBills.filter(b => isLive(b.status) && inRange(b.date, from, to))
     const expenses = allExpenses.filter(e => inRange(e.date, from, to))
 
     // ── KPI totals ──────────────────────────────────────────────
-    const totalPayables    = bills.reduce((s, b) => s + (b.balance || 0), 0)
-    const totalReceivables = invoices.reduce((s, i) => s + (i.balance || 0), 0)
+    // Net of advances: receivables less unearned revenue, payables less
+    // prepaid expenses. The gross Zoho balance ignores cash already held
+    // against the party and so overstates both sides.
+    const grossPayables    = bills.reduce((s, b) => s + (b.balance || 0), 0)
+    const grossReceivables = invoices.reduce((s, i) => s + (i.balance || 0), 0)
+    const totalPayables    = grossPayables - prepaidExpenses
+    const totalReceivables = grossReceivables - unearnedRevenue
     const payablesOverdue    = bills.filter(b => isOverdue(b.due_date, b.balance)).reduce((s, b) => s + b.balance, 0)
     const receivablesOverdue = invoices.filter(i => isOverdue(i.due_date, i.balance)).reduce((s, i) => s + i.balance, 0)
 
@@ -173,6 +183,7 @@ export async function GET(req: NextRequest) {
         payablesOverduePct: totalPayables ? (payablesOverdue / totalPayables) * 100 : 0,
         receivablesOverduePct: totalReceivables ? (receivablesOverdue / totalReceivables) * 100 : 0,
         expensesThisMonth, expensesMomPct, cashAndBankBalance,
+        grossPayables, grossReceivables, unearnedRevenue, prepaidExpenses,
       },
       payablesAgeing, receivablesAgeing, expenseByCategory,
       payablesByVendor, receivablesByCustomer,

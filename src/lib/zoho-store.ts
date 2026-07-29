@@ -74,6 +74,14 @@ async function ensureTables() {
     CREATE TABLE IF NOT EXISTS zoho_sync_cursor (
       module TEXT PRIMARY KEY, next_page INT NOT NULL DEFAULT 1, done BOOLEAN NOT NULL DEFAULT false
     )`
+
+  // Unapplied advance amounts. Zoho exposes these as `unused_amount` on a
+  // payment — money received from a customer (unearned revenue) or paid to
+  // a vendor (prepaid expense) that hasn't been matched to any document.
+  // Added separately so existing installs pick them up without a rebuild;
+  // they stay 0 until the next sync repopulates the payment tables.
+  await sql`ALTER TABLE zoho_customerpayments ADD COLUMN IF NOT EXISTS unused_amount NUMERIC DEFAULT 0`
+  await sql`ALTER TABLE zoho_vendorpayments   ADD COLUMN IF NOT EXISTS unused_amount NUMERIC DEFAULT 0`
 }
 
 // Upsert a single row from Zoho into the right table. Kept as one row at a
@@ -122,20 +130,22 @@ async function upsertRow(module: string, r: any): Promise<void> {
       return
     case "customerpayments":
       await sql`
-        INSERT INTO zoho_customerpayments (payment_id, customer_name, date, amount, tax_amount_withheld, synced_at)
-        VALUES (${r.payment_id}, ${r.customer_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, NOW())
+        INSERT INTO zoho_customerpayments (payment_id, customer_name, date, amount, tax_amount_withheld, unused_amount, synced_at)
+        VALUES (${r.payment_id}, ${r.customer_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, ${r.unused_amount || 0}, NOW())
         ON CONFLICT (payment_id) DO UPDATE SET
           customer_name=EXCLUDED.customer_name, date=EXCLUDED.date,
-          amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld, synced_at=NOW()
+          amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld,
+          unused_amount=EXCLUDED.unused_amount, synced_at=NOW()
       `
       return
     case "vendorpayments":
       await sql`
-        INSERT INTO zoho_vendorpayments (payment_id, vendor_name, date, amount, tax_amount_withheld, synced_at)
-        VALUES (${r.payment_id}, ${r.vendor_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, NOW())
+        INSERT INTO zoho_vendorpayments (payment_id, vendor_name, date, amount, tax_amount_withheld, unused_amount, synced_at)
+        VALUES (${r.payment_id}, ${r.vendor_name}, ${r.date}, ${r.amount || 0}, ${r.tax_amount_withheld || 0}, ${r.unused_amount || 0}, NOW())
         ON CONFLICT (payment_id) DO UPDATE SET
           vendor_name=EXCLUDED.vendor_name, date=EXCLUDED.date,
-          amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld, synced_at=NOW()
+          amount=EXCLUDED.amount, tax_amount_withheld=EXCLUDED.tax_amount_withheld,
+          unused_amount=EXCLUDED.unused_amount, synced_at=NOW()
       `
       return
     case "journals":
@@ -511,6 +521,41 @@ export interface EntityTotal {
   total: number
   overdue: number
   count: number
+}
+
+// Unapplied advances per entity, keyed by canonical name by the caller.
+//
+// Receivables should be shown net of unearned revenue (money a customer has
+// paid that isn't matched to any invoice), and payables net of prepaid
+// expenses (money paid to a vendor not matched to any bill). Reporting the
+// gross Zoho balance alone overstates both sides, because it ignores cash
+// already sitting against that party.
+export async function getUnappliedByEntity(side: "payable" | "receivable"): Promise<Record<string, number>> {
+  await ensureTables()
+  const sql = getNeon() as unknown as (text: string, params?: unknown[]) => Promise<unknown>
+  const table = side === "payable" ? "zoho_vendorpayments" : "zoho_customerpayments"
+  const nameCol = side === "payable" ? "vendor_name" : "customer_name"
+
+  const res = await sql(`
+    SELECT COALESCE(json_agg(t), '[]'::json) AS data FROM (
+      SELECT COALESCE(NULLIF(TRIM(${nameCol}), ''), 'Unknown') AS entity_name,
+             COALESCE(SUM(unused_amount), 0)::float8 AS amt
+      FROM ${table}
+      WHERE COALESCE(unused_amount, 0) <> 0
+      GROUP BY 1
+    ) t
+  `)
+
+  const raw = rowsOf<{ data: unknown }>(res)[0]?.data
+  if (!raw) return {}
+  const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+  if (!Array.isArray(arr)) return {}
+
+  const out: Record<string, number> = {}
+  for (const r of arr as { entity_name: string; amt: number }[]) {
+    out[r.entity_name] = num(r.amt)
+  }
+  return out
 }
 
 export async function getEntityTotals(side: "payable" | "receivable"): Promise<EntityTotal[]> {

@@ -20,6 +20,8 @@ interface DashboardData {
     payablesOverduePct: number; receivablesOverduePct: number
     expensesThisMonth: number; expensesMomPct: number
     cashAndBankBalance: number
+    grossPayables: number; grossReceivables: number
+    unearnedRevenue: number; prepaidExpenses: number
   }
   payablesAgeing: { label: string; amount: number }[]
   receivablesAgeing: { label: string; amount: number }[]
@@ -366,10 +368,12 @@ export default function ZohoDashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* KPI row */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <KpiCard icon="payables" iconBg={C.greenDim} iconColor={C.green} label="Total Payables" value={fmt(data.kpis.totalPayables)}
-                sub="Overdue:" subValue={`${fmtFull(data.kpis.payablesOverdue)} (${pct(data.kpis.payablesOverduePct)})`} subColor={C.red} link="payables" />
-              <KpiCard icon="wallet" iconBg={C.greenDim} iconColor={C.green} label="Total Receivables" value={fmt(data.kpis.totalReceivables)}
-                sub="Overdue:" subValue={`${fmtFull(data.kpis.receivablesOverdue)} (${pct(data.kpis.receivablesOverduePct)})`} subColor={C.red} link="receivables" />
+              <KpiCard icon="payables" iconBg={C.greenDim} iconColor={C.green} label="Total Payables (net)" value={fmt(data.kpis.totalPayables)}
+                sub={data.kpis.prepaidExpenses ? `Gross ${fmt(data.kpis.grossPayables)} less prepaid ${fmt(data.kpis.prepaidExpenses)} · Overdue:` : "Overdue:"}
+                subValue={`${fmtFull(data.kpis.payablesOverdue)} (${pct(data.kpis.payablesOverduePct)})`} subColor={C.red} link="payables" />
+              <KpiCard icon="wallet" iconBg={C.greenDim} iconColor={C.green} label="Total Receivables (net)" value={fmt(data.kpis.totalReceivables)}
+                sub={data.kpis.unearnedRevenue ? `Gross ${fmt(data.kpis.grossReceivables)} less unearned ${fmt(data.kpis.unearnedRevenue)} · Overdue:` : "Overdue:"}
+                subValue={`${fmtFull(data.kpis.receivablesOverdue)} (${pct(data.kpis.receivablesOverduePct)})`} subColor={C.red} link="receivables" />
               <KpiCard icon="doc" iconBg={C.blueDim} iconColor={C.blue} label={`Total Expenses (${range.label})`} value={fmt(data.kpis.expensesThisMonth)}
                 sub="vs prior period:" subValue={`${data.kpis.expensesMomPct >= 0 ? "↑" : "↓"} ${pct(Math.abs(data.kpis.expensesMomPct))}`}
                 subColor={data.kpis.expensesMomPct >= 0 ? C.red : C.green} link="expenses" />

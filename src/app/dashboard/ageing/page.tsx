@@ -2,7 +2,15 @@
 import { useEffect, useState } from "react"
 import { C, fmtFull, Sidebar } from "@/lib/dashboard-ui"
 
-interface EntityAgeing { name: string; buckets: Record<string, number>; total: number }
+interface EntityAgeing {
+  name: string
+  buckets: Record<string, number>
+  grossBuckets: Record<string, number>
+  total: number
+  grossTotal: number
+  advance: number
+  unabsorbedAdvance: number
+}
 interface AgeingData { buckets: string[]; payables: EntityAgeing[]; receivables: EntityAgeing[]; asOf: string }
 
 function AgeingTable({ title, rows, buckets, entityLabel }: { title: string; rows: EntityAgeing[]; buckets: string[]; entityLabel: string }) {
@@ -22,22 +30,40 @@ function AgeingTable({ title, rows, buckets, entityLabel }: { title: string; row
               {buckets.map(b => (
                 <th key={b} style={{ padding: "4px 8px 8px", fontWeight: 600, textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>{b}</th>
               ))}
-              <th style={{ padding: "4px 8px 8px", fontWeight: 600, textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Total</th>
+              <th style={{ padding: "4px 8px 8px", fontWeight: 600, textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>Advance</th>
+              <th style={{ padding: "4px 8px 8px", fontWeight: 600, textAlign: "right" as const, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase" as const }}>Net Total</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={buckets.length + 2} style={{ padding: "16px 8px", textAlign: "center" as const, color: C.dim }}>No data yet</td></tr>
+              <tr><td colSpan={buckets.length + 3} style={{ padding: "16px 8px", textAlign: "center" as const, color: C.dim }}>No data yet</td></tr>
             )}
             {visible.map(r => (
               <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
-                <td style={{ padding: "9px 8px", fontWeight: 600 }}>{r.name}</td>
-                {buckets.map(b => (
-                  <td key={b} style={{ padding: "9px 8px", textAlign: "right" as const, color: r.buckets[b] ? C.text : C.dim }}>
-                    {r.buckets[b] ? fmtFull(r.buckets[b]) : "—"}
-                  </td>
-                ))}
-                <td style={{ padding: "9px 8px", textAlign: "right" as const, fontWeight: 700 }}>{fmtFull(r.total)}</td>
+                <td style={{ padding: "9px 8px", fontWeight: 600 }}>
+                  {r.name}
+                  {r.advance > 0 && (
+                    <div style={{ fontSize: 9.5, color: C.dim, marginTop: 2 }}>gross {fmtFull(r.grossTotal)}</div>
+                  )}
+                </td>
+                {buckets.map(b => {
+                  const netted = r.advance > 0 && r.buckets[b] !== r.grossBuckets[b]
+                  return (
+                    <td key={b} style={{ padding: "9px 8px", textAlign: "right" as const, color: r.buckets[b] ? C.text : C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>
+                      {r.buckets[b] ? fmtFull(r.buckets[b]) : "—"}
+                      {netted && (
+                        <div style={{ fontSize: 9.5, color: C.dim, textDecoration: "line-through" }}>{fmtFull(r.grossBuckets[b])}</div>
+                      )}
+                    </td>
+                  )
+                })}
+                <td style={{ padding: "9px 8px", textAlign: "right" as const, color: r.advance ? C.green : C.dim, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>
+                  {r.advance ? `(${fmtFull(r.advance)})` : "—"}
+                  {r.unabsorbedAdvance > 0 && (
+                    <div style={{ fontSize: 9.5, color: C.amber }}>{fmtFull(r.unabsorbedAdvance)} unapplied</div>
+                  )}
+                </td>
+                <td style={{ padding: "9px 8px", textAlign: "right" as const, fontWeight: 700, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(r.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -46,9 +72,12 @@ function AgeingTable({ title, rows, buckets, entityLabel }: { title: string; row
               <tr style={{ borderTop: `2px solid ${C.border}`, fontWeight: 700 }}>
                 <td style={{ padding: "10px 8px" }}>Total</td>
                 {totals.map((t, i) => (
-                  <td key={buckets[i]} style={{ padding: "10px 8px", textAlign: "right" as const }}>{fmtFull(t)}</td>
+                  <td key={buckets[i]} style={{ padding: "10px 8px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(t)}</td>
                 ))}
-                <td style={{ padding: "10px 8px", textAlign: "right" as const }}>{fmtFull(grandTotal)}</td>
+                <td style={{ padding: "10px 8px", textAlign: "right" as const, color: C.green, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>
+                  ({fmtFull(rows.reduce((s, r) => s + r.advance, 0))})
+                </td>
+                <td style={{ padding: "10px 8px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const }}>{fmtFull(grandTotal)}</td>
               </tr>
             </tfoot>
           )}
