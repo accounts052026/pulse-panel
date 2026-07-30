@@ -3,7 +3,7 @@ import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getEntityTotals, getEntityMapping, canonical,
   getEntityCategoryMap, getDerivedVendorCategories, getUnappliedByEntity,
-  computeNetAgeing,
+  getNetPositions,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -31,14 +31,16 @@ export async function GET() {
       getUnappliedByEntity("receivable"),
     ])
 
-    // The grouped (canonical) figures come from the SAME shared calculation
-    // the dashboard and ageing tabs use, so all three agree by construction.
+    // Net position from Zoho's own contact balances — the same source the
+    // dashboard, ageing and platforms tabs use, so every page reports the
+    // identical figure and it ties to Zoho's Balance Summary reports.
     const EXCLUDED = new Set(["draft", "void", "voided"])
     const isLive = (s?: string) => !EXCLUDED.has((s ?? "").toLowerCase())
-    const netBySide = {
-      payable:    computeNetAgeing(bills.filter(b => isLive(b.status)), "vendor_name", mapping, unappliedAp),
-      receivable: computeNetAgeing(invoices.filter(i => isLive(i.status)), "customer_name", mapping, unappliedAr),
-    }
+    const [apNet, arNet] = await Promise.all([
+      getNetPositions("payable", mapping, bills.filter(b => isLive(b.status)), "vendor_name"),
+      getNetPositions("receivable", mapping, invoices.filter(i => isLive(i.status)), "customer_name"),
+    ])
+    const netBySide = { payable: apNet, receivable: arNet }
 
     const lookup = (map: Record<string, string>, name: string) =>
       map[name] ?? map[name.trim().toLowerCase()] ?? null
@@ -71,17 +73,13 @@ export async function GET() {
         }
       }).sort((a, b) => b.total - a.total)
 
-      // canonically-grouped list — straight from the shared calculation
+      // canonically-grouped list — straight from the shared net calculation
       const groupedList = netBySide[side].entities.map(e => ({
         name: e.name,
-        grossTotal: e.grossTotal,
-        grossOverdue: e.grossOverdue,
-        advance: e.advance,
-        unabsorbedAdvance: e.unabsorbedAdvance,
-        total: e.total,
+        total: e.outstanding,
         overdue: e.overdue,
         count: e.count,
-        pct: e.total > 0 ? Math.min(100, (e.overdue / e.total) * 100) : 0,
+        pct: e.outstanding > 0 ? Math.min(100, (e.overdue / e.outstanding) * 100) : 0,
       }))
 
       return { raw: rawList, grouped: groupedList, side }

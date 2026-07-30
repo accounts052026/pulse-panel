@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
   getCachedExpenses as getExpenses, getCachedBankAccounts as getBankAccounts,
-  getLastSyncedAt, getEntityMapping, canonical, getUnappliedByEntity,
-  computeNetAgeing, getContactBalances,
+  getLastSyncedAt, getEntityMapping, canonical, getNetPositions,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -81,10 +80,8 @@ export async function GET(req: NextRequest) {
     const from = req.nextUrl.searchParams.get("from") || fy.from
     const to   = req.nextUrl.searchParams.get("to")   || fy.to
 
-    const [allInvoices, allBills, allExpenses, bankAccounts, mapping, unappliedAr, unappliedAp, contactsAr, contactsAp] = await Promise.all([
+    const [allInvoices, allBills, allExpenses, bankAccounts, mapping] = await Promise.all([
       getInvoices(), getBills(), getExpenses(), getBankAccounts(), getEntityMapping(),
-      getUnappliedByEntity("receivable"), getUnappliedByEntity("payable"),
-      getContactBalances("receivable"), getContactBalances("payable"),
     ])
 
     // Balances are a snapshot as of today and are deliberately NOT filtered
@@ -110,40 +107,17 @@ export async function GET(req: NextRequest) {
     const asOn = toDate < todayDate ? toDate : todayDate
     const asOnIsPast = toDate < todayDate
 
-    const arNet = computeNetAgeing(invoices, "customer_name", mapping, unappliedAr, asOn)
-    const apNet = computeNetAgeing(bills, "vendor_name", mapping, unappliedAp, asOn)
+    const [arNet, apNet] = await Promise.all([
+      getNetPositions("receivable", mapping, invoices, "customer_name", asOn),
+      getNetPositions("payable", mapping, bills, "vendor_name", asOn),
+    ])
 
-    // Zoho's own closing position — matches the Vendor/Customer Balance
-    // Summary reports exactly, because it includes opening balances and
-    // credits that document-level balances can't reproduce. This is the
-    // figure the headline KPIs report, so the dashboard ties to Zoho.
-    const sumNet = (rows: { net: number }[]) => rows.reduce((s, r) => s + r.net, 0)
-    const sumOut = (rows: { outstanding: number }[]) => rows.reduce((s, r) => s + r.outstanding, 0)
-    const sumCredits = (rows: { credits: number }[]) => rows.reduce((s, r) => s + r.credits, 0)
-
-    // Zoho's contact balances are a CURRENT snapshot — they carry no history,
-    // so they're only valid when the as-on date is today. For a past period
-    // we fall back to the document-derived position, which can be rebuilt
-    // for any date.
-    const haveContacts = !asOnIsPast && (contactsAp.length > 0 || contactsAr.length > 0)
-
-    const unearnedRevenue = haveContacts ? sumCredits(contactsAr) : arNet.advance
-    const prepaidExpenses = haveContacts ? sumCredits(contactsAp) : apNet.advance
-    const grossPayables    = haveContacts ? sumOut(contactsAp) : apNet.grossTotal
-    const grossReceivables = haveContacts ? sumOut(contactsAr) : arNet.grossTotal
-    const totalPayables    = haveContacts ? sumNet(contactsAp) : apNet.total
-    const totalReceivables = haveContacts ? sumNet(contactsAr) : arNet.total
-
-    // Overdue still comes from documents (contacts carry no due dates), so
-    // it's capped at the authoritative net to stay internally consistent.
-    const payablesOverdue    = Math.min(apNet.overdue, Math.max(0, totalPayables))
-    const receivablesOverdue = Math.min(arNet.overdue, Math.max(0, totalReceivables))
-
-    // Difference between Zoho's closing position and the sum of open
-    // documents — opening balances, and anything not represented by an
-    // invoice/bill. Surfaced rather than silently absorbed.
-    const payablesUnreconciled    = totalPayables - apNet.total
-    const receivablesUnreconciled = totalReceivables - arNet.total
+    // Single net figure per side, already inclusive of credits, advances
+    // and opening balances — identical to what every other tab reports.
+    const totalPayables    = apNet.total
+    const totalReceivables = arNet.total
+    const payablesOverdue    = apNet.overdue
+    const receivablesOverdue = arNet.overdue
 
     const now = new Date()
 
@@ -185,7 +159,7 @@ export async function GET(req: NextRequest) {
     // Payables/Receivables tabs instead of being computed a second way.
     const topFrom = (net: typeof arNet, n = 5) => {
       const rows = net.entities
-        .map(e => ({ name: e.name, total: e.total, overdue: e.overdue, pct: e.total > 0 ? Math.min(100, (e.overdue / e.total) * 100) : 0 }))
+        .map(e => ({ name: e.name, total: e.outstanding, overdue: e.overdue, pct: e.outstanding > 0 ? Math.min(100, (e.overdue / e.outstanding) * 100) : 0 }))
         .filter(r => r.total !== 0)
       return { top: rows.slice(0, n), rest: rows.slice(n) }
     }
@@ -248,9 +222,7 @@ export async function GET(req: NextRequest) {
         payablesOverduePct: totalPayables > 0 ? Math.min(100, (payablesOverdue / totalPayables) * 100) : 0,
         receivablesOverduePct: totalReceivables > 0 ? Math.min(100, (receivablesOverdue / totalReceivables) * 100) : 0,
         expensesThisMonth, expensesMomPct, cashAndBankBalance,
-        grossPayables, grossReceivables, unearnedRevenue, prepaidExpenses,
-        payablesUnreconciled, receivablesUnreconciled,
-        source: haveContacts ? "zoho-contacts" : "documents",
+        source: apNet.source,
       },
       payablesAgeing, receivablesAgeing, expenseByCategory,
       payablesByVendor, receivablesByCustomer,

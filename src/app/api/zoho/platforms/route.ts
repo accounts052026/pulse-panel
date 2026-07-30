@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import {
   getCachedInvoices as getInvoices, getCachedBills as getBills,
-  getLastSyncedAt, getEntityMapping, canonical, getUnappliedByEntity,
+  getLastSyncedAt, getEntityMapping, canonical, getNetPositions,
 } from "@/lib/zoho-store"
 
 export const dynamic = "force-dynamic"
@@ -82,12 +82,28 @@ function byPlatform<T extends { balance: number; due_date: string }>(
 
 export async function GET() {
   try {
-    const [invoices, bills, mapping, unappliedAr, unappliedAp] = await Promise.all([
+    const [invoices, bills, mapping] = await Promise.all([
       getInvoices(), getBills(), getEntityMapping(),
-      getUnappliedByEntity("receivable"), getUnappliedByEntity("payable"),
     ])
-    const receivablesByPlatform = byPlatform(invoices, "customer_name", mapping, unappliedAr)
-    const payablesByPlatform = byPlatform(bills, "vendor_name", mapping, unappliedAp)
+
+    // Same net position source as every other page — platform totals now
+    // tie to Payables/Receivables/Ageing and to Zoho itself.
+    const EXCLUDED = new Set(["draft", "void", "voided"])
+    const isLive = (s?: string) => !EXCLUDED.has((s ?? "").toLowerCase())
+    const [arNet, apNet] = await Promise.all([
+      getNetPositions("receivable", mapping, invoices.filter(i => isLive(i.status)), "customer_name"),
+      getNetPositions("payable", mapping, bills.filter(b => isLive(b.status)), "vendor_name"),
+    ])
+
+    const toRows = (net: typeof arNet) => net.entities
+      .map(e => ({
+        name: e.name, total: e.outstanding, overdue: e.overdue, count: e.count,
+        pct: e.outstanding > 0 ? Math.min(100, (e.overdue / e.outstanding) * 100) : 0,
+      }))
+      .filter(r => r.total !== 0)
+
+    const receivablesByPlatform = toRows(arNet)
+    const payablesByPlatform = toRows(apNet)
 
     // Combined view — every platform appearing on either side, so
     // receivables and payables can be compared in one window.

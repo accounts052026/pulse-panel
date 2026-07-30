@@ -20,8 +20,7 @@ interface DashboardData {
     payablesOverduePct: number; receivablesOverduePct: number
     expensesThisMonth: number; expensesMomPct: number
     cashAndBankBalance: number
-    grossPayables: number; grossReceivables: number
-    unearnedRevenue: number; prepaidExpenses: number
+    source?: string
   }
   payablesAgeing: { label: string; amount: number }[]
   receivablesAgeing: { label: string; amount: number }[]

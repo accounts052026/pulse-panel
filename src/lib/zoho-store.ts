@@ -673,6 +673,123 @@ export function computeNetAgeing(
   }
 }
 
+// ── Net position per entity — THE figure every page reports ─────
+//
+// "What do I owe / what am I owed" — one number, already net of credits,
+// advances and opening balances. Zoho's contact record carries exactly
+// that (it's what its Vendor/Customer Balance Summary prints), and it
+// cannot be reconstructed by summing unpaid documents: opening balances
+// have no document behind them, and Dr balances from overpayment offset
+// the total. Summing documents read ~1.50 Cr against Zoho's 1.04 Cr.
+//
+// Ageing buckets still have to come from documents (a balance with no
+// invoice behind it has no due date), so the gap between Zoho's net and
+// the document total is placed in the oldest bucket — opening balances
+// are by definition old — and the buckets are then made to sum to the
+// authoritative net so every page ties.
+export interface NetPosition {
+  name: string
+  outstanding: number
+  overdue: number
+  count: number
+  buckets: Record<string, number>
+}
+
+export interface NetPositionResult {
+  entities: NetPosition[]
+  total: number
+  overdue: number
+  bucketTotals: { label: string; amount: number }[]
+  source: "zoho-contacts" | "documents"
+}
+
+export async function getNetPositions(
+  side: "payable" | "receivable",
+  mapping: Record<string, string>,
+  docs: { balance: number; due_date: string; date?: string; status?: string }[],
+  nameKey: string,
+  asOn: Date = new Date(),
+): Promise<NetPositionResult> {
+  const isHistorical = asOn < new Date(new Date().toDateString())
+
+  // Raw document ageing (no advance netting — credits come from contacts).
+  const docAgeing = computeNetAgeing(docs, nameKey, mapping, {}, asOn)
+
+  const contacts = isHistorical ? [] : await getContactBalances(side)
+
+  // Contact balances are a CURRENT snapshot with no history, so for a past
+  // as-on date we fall back to documents netted by unapplied payments.
+  if (contacts.length === 0) {
+    const unapplied = await getUnappliedByEntity(side)
+    const netted = computeNetAgeing(docs, nameKey, mapping, unapplied, asOn)
+    return {
+      entities: netted.entities.map(e => ({
+        name: e.name, outstanding: e.total, overdue: e.overdue,
+        count: e.count, buckets: e.buckets,
+      })),
+      total: netted.total,
+      overdue: netted.overdue,
+      bucketTotals: netted.bucketTotals,
+      source: "documents",
+    }
+  }
+
+  const netByName: Record<string, number> = {}
+  for (const c of contacts) {
+    const key = canonical(c.name, mapping)
+    netByName[key] = (netByName[key] ?? 0) + c.net
+  }
+
+  const docByName = new Map(docAgeing.entities.map(e => [e.name, e]))
+  const names = new Set<string>([...Object.keys(netByName), ...docByName.keys()])
+  const emptyBuckets = () => Object.fromEntries(AGEING_BUCKETS.map(b => [b, 0])) as Record<string, number>
+
+  const entities: NetPosition[] = []
+  for (const name of names) {
+    const net = netByName[name] ?? 0
+    const d = docByName.get(name)
+    const docTotal = d?.grossTotal ?? 0
+    const buckets = d ? { ...d.buckets } : emptyBuckets()
+
+    // Reconcile buckets to the authoritative net.
+    let diff = net - docTotal
+    if (diff > 0) {
+      // Unexplained by open documents — opening balance, so it's oldest.
+      buckets[AGEING_BUCKETS[AGEING_BUCKETS.length - 1]] += diff
+    } else if (diff < 0) {
+      // Credits/advances reduce the oldest first (FIFO).
+      let left = -diff
+      for (let i = AGEING_BUCKETS.length - 1; i >= 0 && left > 0; i--) {
+        const b = AGEING_BUCKETS[i]
+        const applied = Math.min(buckets[b], left)
+        buckets[b] -= applied
+        left -= applied
+      }
+    }
+
+    const overdue = Math.min(
+      Math.max(0, (d?.grossOverdue ?? 0) + Math.max(0, diff)),
+      Math.max(0, net),
+    )
+
+    if (net === 0 && docTotal === 0) continue
+    entities.push({ name, outstanding: net, overdue, count: d?.count ?? 0, buckets })
+  }
+
+  entities.sort((a, b) => b.outstanding - a.outstanding)
+
+  return {
+    entities,
+    total: entities.reduce((s, e) => s + e.outstanding, 0),
+    overdue: entities.reduce((s, e) => s + e.overdue, 0),
+    bucketTotals: AGEING_BUCKETS.map(label => ({
+      label,
+      amount: entities.reduce((s, e) => s + e.buckets[label], 0),
+    })),
+    source: "zoho-contacts",
+  }
+}
+
 // ── Server-side aggregation ─────────────────────────────────────
 //
 // Entity totals used to be computed by pulling every invoice/bill row into
