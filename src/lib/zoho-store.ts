@@ -740,14 +740,19 @@ export async function getNetPositions(
     netByName[key] = (netByName[key] ?? 0) + c.net
   }
 
-  const docByName = new Map(docAgeing.entities.map(e => [e.name, e]))
-  const names = new Set<string>([...Object.keys(netByName), ...docByName.keys()])
+  // Plain objects/arrays rather than Map/Set iterators — the project's
+  // TS target predates downlevel iteration, so spreading an iterator here
+  // fails the build.
+  const docByName: Record<string, (typeof docAgeing.entities)[number]> = {}
+  for (const e of docAgeing.entities) docByName[e.name] = e
+
+  const names = Array.from(new Set(Object.keys(netByName).concat(Object.keys(docByName))))
   const emptyBuckets = () => Object.fromEntries(AGEING_BUCKETS.map(b => [b, 0])) as Record<string, number>
 
   const entities: NetPosition[] = []
   for (const name of names) {
     const net = netByName[name] ?? 0
-    const d = docByName.get(name)
+    const d = docByName[name]
     const docTotal = d?.grossTotal ?? 0
     const buckets = d ? { ...d.buckets } : emptyBuckets()
 
