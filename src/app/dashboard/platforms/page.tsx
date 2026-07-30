@@ -5,16 +5,13 @@ import { C, fmt, fmtFull, pct, Sidebar, DateRangeFilter, defaultRange, type Date
 
 interface ReconRow {
   name: string
-  grossSales: number; returnsCn: number; bdpoCn: number; otherCn: number
-  netSales: number; receipts: number; netReceivable: number
-  bills: number; vendorPayments: number; netPayable: number
-  netSettlement: number; invoiceCount: number
+  invoiced: number
+  creditNotes: number
+  payments: number
+  journals: number
+  net: number
 }
-interface ReconData {
-  rows: ReconRow[]
-  creditNoteAccounts: string[]
-  enrichment: { total: number; done: number; pending: number; unclassifiedNotes: number }
-}
+interface ReconData { rows: ReconRow[] }
 
 interface PlatformRow { name: string; total: number; overdue: number; count: number; pct: number }
 interface CombinedRow {
@@ -52,8 +49,6 @@ export default function PlatformsPage() {
   const [view, setView] = useState<"balances" | "reconciliation">("reconciliation")
   const [range, setRange] = useState<DateRange>(defaultRange)
   const [recon, setRecon] = useState<ReconData | null>(null)
-  const [enriching, setEnriching] = useState(false)
-  const [enrichMsg, setEnrichMsg] = useState("")
 
   useEffect(() => {
     fetch("/api/zoho/platforms", { cache: "no-store" })
@@ -71,25 +66,6 @@ export default function PlatformsPage() {
   }
 
   useEffect(() => { loadRecon(range) }, [range])
-
-  // Credit note line accounts come from a per-note detail fetch, so this
-  // runs in bounded batches until Zoho has been fully walked.
-  const enrichCreditNotes = async () => {
-    setEnriching(true)
-    try {
-      for (let i = 0; i < 200; i++) {
-        const res = await fetch("/api/zoho/creditnote-details?limit=40", { method: "POST" })
-        const d = await res.json().catch(() => ({ error: "Bad response" }))
-        if (d.error) { setEnrichMsg(`Failed: ${d.error}`); break }
-        setEnrichMsg(`Classifying credit notes… ${d.remaining} remaining`)
-        if (!d.remaining) { setEnrichMsg("Credit notes classified"); break }
-      }
-      loadRecon(range)
-    } finally {
-      setEnriching(false)
-      setTimeout(() => setEnrichMsg(""), 5000)
-    }
-  }
 
   const rows = (data?.combined ?? [])
     .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()))
@@ -149,73 +125,61 @@ export default function PlatformsPage() {
         {loading && <div style={{ textAlign: "center" as const, padding: 60, color: C.dim }}>Loading…</div>}
         {error && <div style={{ background: C.redDim, border: `1px solid ${C.red}33`, borderRadius: 10, padding: "12px 16px", color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
-        {view === "reconciliation" && recon && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {recon.enrichment.pending > 0 && (
-              <div style={{ background: C.amberDim, border: `1px solid ${C.amber}44`, borderRadius: 10, padding: "12px 16px", fontSize: 12.5, color: C.text, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <span>
-                  <b>{recon.enrichment.pending.toLocaleString("en-IN")}</b> of {recon.enrichment.total.toLocaleString("en-IN")} credit notes
-                  aren&apos;t classified yet — until they are, their value sits in <b>Other CN</b> rather than splitting into BDPO vs Returns.
-                </span>
-                <button onClick={enrichCreditNotes} disabled={enriching}
-                  style={{ background: enriching ? "#CBD5E1" : C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: enriching ? "wait" : "pointer" }}>
-                  {enriching ? "Classifying…" : "Classify now"}
-                </button>
-                {enrichMsg && <span style={{ color: C.dim }}>{enrichMsg}</span>}
-              </div>
-            )}
-
+        {view === "reconciliation" && recon && (() => {
+          const shown = recon.rows.filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()))
+          const sum = (k: keyof ReconRow) => shown.reduce((s, r) => s + (r[k] as number), 0)
+          const cell = (v: number, color?: string, bold?: boolean) => (
+            <td style={{ padding: "11px 12px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const, color: v ? (color ?? C.text) : C.dim, fontWeight: bold ? 700 : 400 }}>
+              {v ? fmtFull(v) : "—"}
+            </td>
+          )
+          return (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Settlement Reconciliation — {range.label}</div>
-              <div style={{ fontSize: 12, color: C.dim, marginBottom: 14, lineHeight: 1.5 }}>
-                Gross Sales less Returns and BDPO credit notes gives Net Sales; less payments received gives what the platform still owes.
-                Marketing and other bills less vendor payments gives what you owe them. Net Settlement is the difference.
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Platform Activity — {range.label}</div>
+              <div style={{ fontSize: 12, color: C.dim, marginBottom: 16 }}>
+                Invoices raised, less credit notes and payments received, plus any journals. Net is what the platform still owes for this period.
               </div>
               <div style={{ overflowX: "auto" as const }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1080 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 720 }}>
                   <thead>
                     <tr style={{ background: "#F8FAFC", color: C.dim }}>
-                      {["Platform", "Gross Sales", "Returns CN", "BDPO CN", "Other CN", "Net Sales", "Receipts", "Net Receivable", "Bills", "Vendor Paid", "Net Payable", "Net Settlement"].map((h, i) => (
-                        <th key={h} style={{ padding: "10px 10px", textAlign: i === 0 ? "left" as const : "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700, whiteSpace: "nowrap" as const }}>{h}</th>
+                      {["Platform", "Invoices Raised", "Credit Notes", "Payments Received", "Journals", "Net"].map((h, i) => (
+                        <th key={h} style={{ padding: "11px 12px", textAlign: i === 0 ? "left" as const : "right" as const, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" as const, fontWeight: 700, whiteSpace: "nowrap" as const }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {recon.rows.filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase())).map(r => {
-                      const cell = (v: number, color?: string, bold?: boolean) => (
-                        <td style={{ padding: "10px 10px", textAlign: "right" as const, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const, color: v ? (color ?? C.text) : C.dim, fontWeight: bold ? 700 : 400 }}>
-                          {v ? fmtFull(v) : "—"}
-                        </td>
-                      )
-                      return (
-                        <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
-                          <td style={{ padding: "10px 10px", fontWeight: 600, whiteSpace: "nowrap" as const }}>
-                            {r.name}
-                            <div style={{ fontSize: 10, color: C.dim, fontWeight: 500, marginTop: 2 }}>{r.invoiceCount} invoices</div>
-                          </td>
-                          {cell(r.grossSales)}
-                          {cell(r.returnsCn, C.red)}
-                          {cell(r.bdpoCn, C.amber)}
-                          {cell(r.otherCn, C.dim)}
-                          {cell(r.netSales, undefined, true)}
-                          {cell(r.receipts, C.green)}
-                          {cell(r.netReceivable, r.netReceivable >= 0 ? C.text : C.red, true)}
-                          {cell(r.bills)}
-                          {cell(r.vendorPayments, C.green)}
-                          {cell(r.netPayable)}
-                          {cell(r.netSettlement, r.netSettlement >= 0 ? C.green : C.red, true)}
-                        </tr>
-                      )
-                    })}
-                    {recon.rows.length === 0 && (
-                      <tr><td colSpan={12} style={{ padding: 24, textAlign: "center" as const, color: C.dim }}>No activity in this period</td></tr>
+                    {shown.map(r => (
+                      <tr key={r.name} style={{ borderTop: `1px solid ${C.border}` }}>
+                        <td style={{ padding: "11px 12px", fontWeight: 600, whiteSpace: "nowrap" as const }}>{r.name}</td>
+                        {cell(r.invoiced)}
+                        {cell(r.creditNotes, C.amber)}
+                        {cell(r.payments, C.green)}
+                        {cell(r.journals, C.dim)}
+                        {cell(r.net, r.net >= 0 ? C.text : C.green, true)}
+                      </tr>
+                    ))}
+                    {shown.length === 0 && (
+                      <tr><td colSpan={6} style={{ padding: 24, textAlign: "center" as const, color: C.dim }}>No activity in this period</td></tr>
                     )}
                   </tbody>
+                  {shown.length > 0 && (
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${C.border}`, fontWeight: 700, background: "#FAFBFD" }}>
+                        <td style={{ padding: "12px" }}>Total</td>
+                        {cell(sum("invoiced"), undefined, true)}
+                        {cell(sum("creditNotes"), C.amber, true)}
+                        {cell(sum("payments"), C.green, true)}
+                        {cell(sum("journals"), C.dim, true)}
+                        {cell(sum("net"), undefined, true)}
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {view === "balances" && data && (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>

@@ -368,11 +368,11 @@ export default function ZohoDashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* KPI row */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <KpiCard icon="payables" iconBg={C.greenDim} iconColor={C.green} label="Total Payables (net)" value={fmt(data.kpis.totalPayables)}
-                sub={data.kpis.prepaidExpenses ? `Gross ${fmt(data.kpis.grossPayables)} less prepaid ${fmt(data.kpis.prepaidExpenses)} · Overdue:` : "Overdue:"}
+              <KpiCard icon="payables" iconBg={C.greenDim} iconColor={C.green} label="You Owe" value={fmt(data.kpis.totalPayables)}
+                sub="Overdue:"
                 subValue={`${fmtFull(data.kpis.payablesOverdue)} (${pct(data.kpis.payablesOverduePct)})`} subColor={C.red} link="payables" />
-              <KpiCard icon="wallet" iconBg={C.greenDim} iconColor={C.green} label="Total Receivables (net)" value={fmt(data.kpis.totalReceivables)}
-                sub={data.kpis.unearnedRevenue ? `Gross ${fmt(data.kpis.grossReceivables)} less unearned ${fmt(data.kpis.unearnedRevenue)} · Overdue:` : "Overdue:"}
+              <KpiCard icon="wallet" iconBg={C.greenDim} iconColor={C.green} label="Owed To You" value={fmt(data.kpis.totalReceivables)}
+                sub="Overdue:"
                 subValue={`${fmtFull(data.kpis.receivablesOverdue)} (${pct(data.kpis.receivablesOverduePct)})`} subColor={C.red} link="receivables" />
               <KpiCard icon="doc" iconBg={C.blueDim} iconColor={C.blue} label={`Total Expenses (${range.label})`} value={fmt(data.kpis.expensesThisMonth)}
                 sub="vs prior period:" subValue={`${data.kpis.expensesMomPct >= 0 ? "↑" : "↓"} ${pct(Math.abs(data.kpis.expensesMomPct))}`}
