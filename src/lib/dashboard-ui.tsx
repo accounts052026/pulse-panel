@@ -40,6 +40,7 @@ export function Icon({ name, size = 15 }: { name: string; size?: number }) {
     case "cashflow":   return <svg viewBox="0 0 24 24" {...s}><path d="M3 17c3-5 5-7 9-7s6 2 9 7" /><path d="M15 8v2h2" /></svg>
     case "platforms":  return <svg viewBox="0 0 24 24" {...s}><rect x="3" y="4" width="8" height="8" rx="1.5" /><rect x="13" y="4" width="8" height="8" rx="1.5" /><rect x="3" y="14" width="8" height="6" rx="1.5" /><rect x="13" y="14" width="8" height="6" rx="1.5" /></svg>
     case "reports":    return <svg viewBox="0 0 24 24" {...s}><rect x="3.5" y="3.5" width="17" height="17" rx="2" /><path d="M8 16v-4M12 16V8M16 16v-2" /></svg>
+    case "b2b":        return <svg viewBox="0 0 24 24" {...s}><path d="M3 9.5 12 4l9 5.5v9L12 24l-9-5.5Z" opacity="0" /><rect x="3" y="8" width="18" height="12" rx="2" /><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" /></svg>
     case "entities":   return <svg viewBox="0 0 24 24" {...s}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg>
     case "settings":   return <svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg>
     case "calendar":   return <svg viewBox="0 0 24 24" {...s}><rect x="3.5" y="5" width="17" height="16" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>
@@ -65,6 +66,7 @@ export const NAV = [
   { key: "ageing",      label: "Ageing Analysis",  icon: "ageing",     href: "/dashboard/ageing" },
   { key: "cashflow",    label: "Cash Flow",        icon: "cashflow",   href: "/dashboard/cashflow" },
   { key: "platforms",   label: "Platforms",        icon: "platforms",  href: "/dashboard/platforms" },
+  { key: "b2b",         label: "B2B Tracker",      icon: "b2b",        href: "/dashboard/b2b" },
   { key: "reports",     label: "Reports",          icon: "reports",    href: "/dashboard/reports" },
 ]
 
