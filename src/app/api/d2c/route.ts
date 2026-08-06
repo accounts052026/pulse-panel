@@ -111,8 +111,11 @@ export async function GET() {
     }
 
     interface GW { name: string; amount: number; fee: number; tax: number; credit: number }
+    // Only the numeric fields — keyof GW would include `name: string`, which
+    // makes the accumulate below type-error.
+    type GWNumField = "amount" | "fee" | "tax" | "credit"
     const gateways: Record<string, GW> = {}
-    const gwCols: { col: number; gw: string; field: keyof GW }[] = []
+    const gwCols: { col: number; gw: string; field: GWNumField }[] = []
     for (let c = 0; c < header.length; c++) {
       const h = header[c]
       const grp = gatewayOf[c]
@@ -120,7 +123,7 @@ export async function GET() {
       const g = grp.toLowerCase()
       const isGateway = /razorpay|easebuzz|twid|gokwik|gowik|sr c|cod|shiprocket/.test(g)
       if (!isGateway) continue
-      let field: keyof GW | null = null
+      let field: GWNumField | null = null
       if (h.includes("amount")) field = "amount"
       else if (h.includes("fee")) field = "fee"
       else if (h.includes("tax")) field = "tax"
